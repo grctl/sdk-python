@@ -1,3 +1,6 @@
+[tools]
+uv = "latest"
+
 [tasks.lint]
 description = "Run ruff check"
 run = "uv run ruff check --fix"
