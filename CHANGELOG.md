@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.0 (2026-05-02)
+
+
+### Bug Fixes
+
+* add tool uv ([#2](https://github.com/grctl/sdk-python/issues/2)) ([254d26a](https://github.com/grctl/sdk-python/commit/254d26ad36fb4d9785f1bbb2955d77085ac7e1cd))
+* docs url ([#3](https://github.com/grctl/sdk-python/issues/3)) ([446dbec](https://github.com/grctl/sdk-python/commit/446dbec13bb9faae1c19cd1edf62727f4a7d4a28))
+* new repo ([9d9d8a4](https://github.com/grctl/sdk-python/commit/9d9d8a4ad2f6fb47cefc948393d3e0f3993c9899))
+
 ## [0.1.2](https://github.com/grctl/grctl/compare/grctl-sdk-python-v0.1.1...grctl-sdk-python-v0.1.2) (2026-04-28)
 
 
