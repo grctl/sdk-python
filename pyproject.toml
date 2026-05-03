@@ -60,7 +60,7 @@ module-name = "grctl"
 module-root = ""
 
 [tool.pytest.ini_options]
-addopts = "--ignore=tests/examples --ignore=tests/e2e"
+addopts = "--ignore=tests/examples --ignore=tests/e2e --ignore=tests/spec"
 testpaths = ["tests"]
 log_cli = true
 log_cli_level = "DEBUG"
@@ -107,6 +107,7 @@ lint.ignore = [
     "ANN204", # Allow missing type annotations for self and cls in tests
     "ARG",    # Unused function args for fixtures
     "COM812",
+    "D104", # Missing docstring in public package
     "FBT",    # Don't care about booleans as positional arguments in tests for @pytest.mark.parametrize
     "INP001", # Ignore that its not in a real python module. Doesn't matter for tests
     # The below are debateable

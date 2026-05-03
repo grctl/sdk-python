@@ -19,9 +19,9 @@ async def test_wait_events_example_end_to_end() -> None:
     worker_task = asyncio.create_task(worker.start())
     client = Client(connection=connection)
 
-    await asyncio.sleep(0.05)
-
     try:
+        await worker.wait_until_ready()
+
         workflow_id = str(ulid.ULID())
         name = "World"
 
@@ -59,22 +59,22 @@ async def test_get_workflow_handle_cross_process() -> None:
     worker_task = asyncio.create_task(worker.start())
     client_1 = Client(connection=connection_1)
 
-    await asyncio.sleep(0.05)
-
-    workflow_id = str(ulid.ULID())
-    name = "World"
-
-    wf_handle = await client_1.start_workflow(
-        type=greet_events.workflow_type,
-        id=workflow_id,
-        input={"name": name},
-        timeout=timedelta(seconds=30),
-    )
-
-    # Wait for the workflow to reach its first wait_for_event state.
-    await asyncio.sleep(1)
-
     try:
+        await worker.wait_until_ready()
+
+        workflow_id = str(ulid.ULID())
+        name = "World"
+
+        wf_handle = await client_1.start_workflow(
+            type=greet_events.workflow_type,
+            id=workflow_id,
+            input={"name": name},
+            timeout=timedelta(seconds=30),
+        )
+
+        # Wait for the workflow to reach its first wait_for_event state.
+        await asyncio.sleep(1)
+
         # --- Process 2: independent connection, no knowledge of the original handle ---
         Connection.reset()
         connection_2 = await Connection.connect()

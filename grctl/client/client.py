@@ -11,10 +11,11 @@ from typing import Any
 import msgspec
 from ulid import ULID
 
-from grctl.models import DescribeCmd, GrctlAPIResponse, RunInfo
+from grctl.models import DescribeCmd, GrctlAPIResponse, HistoryEvent, RunInfo
 from grctl.models.command import CmdKind, Command
 from grctl.models.errors import WorkflowError, WorkflowNotFoundError
 from grctl.nats.connection import Connection
+from grctl.nats.history_fetch import fetch_run_history
 from grctl.worker.codec import CodecRegistry
 from grctl.workflow.handle import WorkflowHandle
 
@@ -29,6 +30,28 @@ class Client:
     def __init__(self, connection: Connection, codec: CodecRegistry | None = None) -> None:
         self._connection = connection
         self._codec = codec or CodecRegistry()
+
+    async def describe(self, wf_id: str) -> RunInfo:
+        """Describe the latest run for a workflow ID."""
+        cmd = Command(
+            id=str(ULID()),
+            kind=CmdKind.run_describe,
+            timestamp=datetime.now(UTC),
+            msg=DescribeCmd(wf_id=wf_id),
+        )
+        # Use a routing-only RunInfo — publish_cmd only needs wf_id for subject routing.
+        routing_info = RunInfo(id="", wf_type="", wf_id=wf_id)
+        response_bytes = await self._connection.publisher.publish_cmd(routing_info, cmd)
+
+        response = msgspec.msgpack.decode(response_bytes, type=GrctlAPIResponse)
+        if not response.success:
+            error_msg = response.error.message if response.error else "unknown error"
+            error_code = response.error.code if response.error else 0
+            if error_code == ErrWorkflowRunNotFoundCode:
+                raise WorkflowNotFoundError(f"workflow '{wf_id}' not found: {error_msg}")
+            raise WorkflowError(f"describe failed (code={error_code}): {error_msg}")
+
+        return msgspec.msgpack.decode(response.payload, type=RunInfo)
 
     async def run_workflow(
         self,
@@ -50,27 +73,9 @@ class Client:
         finally:
             await wf_handle.future.stop()
 
-    async def get_workflow_handle(self, workflow_id: str) -> WorkflowHandle:
+    async def get_workflow_handle(self, wfid: str) -> WorkflowHandle:
         """Get a handle for an already-running workflow."""
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_describe,
-            timestamp=datetime.now(UTC),
-            msg=DescribeCmd(wf_id=workflow_id),
-        )
-        # Use a routing-only RunInfo — publish_cmd only needs wf_id for subject routing.
-        routing_info = RunInfo(id="", wf_type="", wf_id=workflow_id)
-        response_bytes = await self._connection.publisher.publish_cmd(routing_info, cmd)
-
-        response = msgspec.msgpack.decode(response_bytes, type=GrctlAPIResponse)
-        if not response.success:
-            error_msg = response.error.message if response.error else "unknown error"
-            error_code = response.error.code if response.error else 0
-            if error_code == ErrWorkflowRunNotFoundCode:
-                raise WorkflowNotFoundError(f"workflow '{workflow_id}' not found: {error_msg}")
-            raise WorkflowError(f"describe failed (code={error_code}): {error_msg}")
-
-        run_info = msgspec.msgpack.decode(response.payload, type=RunInfo)
+        run_info = await self.describe(wfid)
 
         handle = WorkflowHandle(
             run_info=run_info,
@@ -80,6 +85,19 @@ class Client:
         )
         await handle.attach()
         return handle
+
+    async def get_history(self, wf_id: str, run_id: str | None = None) -> list[HistoryEvent]:
+        """Return the ordered history events for a workflow run."""
+        resolved_run_id = run_id
+        if resolved_run_id is None:
+            resolved_run_id = (await self.describe(wf_id)).id
+
+        return await fetch_run_history(
+            js=self._connection.js,
+            manifest=self._connection.manifest,
+            wf_id=wf_id,
+            run_id=resolved_run_id,
+        )
 
     async def start_workflow(
         self,

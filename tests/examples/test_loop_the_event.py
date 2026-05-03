@@ -24,9 +24,9 @@ async def test_wait_events_example_end_to_end() -> None:
     worker_task = asyncio.create_task(worker.start())
     client = Client(connection=connection)
 
-    await asyncio.sleep(0.05)
-
     try:
+        await worker.wait_until_ready()
+
         workflow_id = str(ulid.ULID())
         name = "Integration Tester"
 

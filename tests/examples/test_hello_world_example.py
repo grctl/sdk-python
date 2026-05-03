@@ -11,17 +11,6 @@ from grctl.nats.connection import Connection
 from grctl.worker.worker import Worker
 
 
-async def _wait_for_worker_ready(worker: Worker, worker_task: asyncio.Task) -> None:
-    """Wait until worker has subscribed to workflow directives."""
-    async with asyncio.timeout(5.0):
-        while True:
-            if worker._subscriber is not None:
-                return
-            if worker_task.done():
-                worker_task.result()  # Propagate exception if task exited early
-            await asyncio.sleep(0.05)
-
-
 @pytest.mark.asyncio
 async def test_hello_world_example_end_to_end() -> None:
     """Run hello_world example workflow against a live server."""
@@ -30,9 +19,9 @@ async def test_hello_world_example_end_to_end() -> None:
     worker_task = asyncio.create_task(worker.start())
     client = Client(connection=connection)
 
-    await asyncio.sleep(0.05)  # Give worker a moment to start
-
     try:
+        await worker.wait_until_ready()
+
         workflow_id = str(ulid.ULID())
         name = "World!"
 

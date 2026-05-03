@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -29,7 +30,7 @@ async def test_subscribe_called_with_wf_types() -> None:
     connection = _make_connection()
     worker = Worker(workflows=[wf], connection=connection)
 
-    mock_subscriber = AsyncMock(spec=Subscriber)
+    mock_subscriber = AsyncMock()
 
     with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber) as mock_subscriber_cls:
         worker._stop_event.set()
@@ -43,6 +44,7 @@ async def test_subscribe_called_with_wf_types() -> None:
 
 @pytest.mark.asyncio
 async def test_subscriber_uses_configured_worker_ack_wait() -> None:
+
     connection = _make_connection()
     connection.manifest.worker_task_filter_subject.return_value = "grctl_worker_task.wf_type_a.>"
     connection.manifest.worker_task_queue_group.return_value = "grctl_worker_wf_type_a"
@@ -62,3 +64,38 @@ async def test_subscriber_uses_configured_worker_ack_wait() -> None:
     subscribe_kwargs = connection.js.subscribe.await_args.kwargs  # ty:ignore[unresolved-attribute]
     assert isinstance(subscribe_kwargs["config"], ConsumerConfig)
     assert subscribe_kwargs["config"].ack_wait == 7.5
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_returns_after_startup() -> None:
+    wf = _make_workflow("wf_type_a")
+    connection = _make_connection()
+    worker = Worker(workflows=[wf], connection=connection)
+
+    mock_subscriber = AsyncMock()
+
+    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber):
+        start_task = asyncio.create_task(worker.start())
+        await worker.wait_until_ready()
+        await worker.stop()
+        await start_task
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_propagates_startup_failure() -> None:
+    wf = _make_workflow("wf_type_a")
+    connection = _make_connection()
+    worker = Worker(workflows=[wf], connection=connection)
+    startup_error = RuntimeError("boom")
+
+    mock_subscriber = AsyncMock()
+    mock_subscriber.start.side_effect = startup_error
+
+    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber):
+        start_task = asyncio.create_task(worker.start())
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await worker.wait_until_ready()
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await start_task

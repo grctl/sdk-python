@@ -54,8 +54,10 @@ class Worker:
         self._connection = connection
         self._workflow_logger = workflow_logger
         self._stop_event = asyncio.Event()
+        self._startup_event = asyncio.Event()
         self._subscriber: Subscriber | None = None
         self._run_manager: RunManager | None = None
+        self._startup_error: Exception | None = None
 
     @cached_property
     def worker_name(self) -> str:
@@ -81,31 +83,48 @@ class Worker:
 
         Creates RunManager for workflow execution and subscribes to workflow subjects.
         """
+        self._startup_event.clear()
+        self._startup_error = None
+
         logger.info(
             f"Starting worker with {len(self._workflows)} registered workflows",
         )
 
-        self._run_manager = RunManager(
-            worker_name=self.worker_name,
-            worker_id=self.worker_id,
-            workflows=self._workflows,
-            connection=self._connection,
-            workflow_logger=self._workflow_logger,
-        )
+        try:
+            self._run_manager = RunManager(
+                worker_name=self.worker_name,
+                worker_id=self.worker_id,
+                workflows=self._workflows,
+                connection=self._connection,
+                workflow_logger=self._workflow_logger,
+            )
 
-        wf_types = [wf.workflow_type for wf in self._workflows]
-        self._subscriber = Subscriber(
-            js=self._connection.js,
-            manifest=self._connection.manifest,
-            wf_types=wf_types,
-            run_manager=self._run_manager,
-        )
-        await self._subscriber.start()
+            wf_types = [wf.workflow_type for wf in self._workflows]
+            self._subscriber = Subscriber(
+                js=self._connection.js,
+                manifest=self._connection.manifest,
+                wf_types=wf_types,
+                run_manager=self._run_manager,
+            )
+            await self._subscriber.start()
+            self._startup_event.set()
 
-        logger.info(f"Worker {self.worker_name} ({self.worker_id}) started and ready to process messages")
+            logger.info(f"Worker {self.worker_name} ({self.worker_id}) started and ready to process messages")
 
-        # Keep worker alive
-        await self._process_messages()
+            # Keep worker alive
+            await self._process_messages()
+        except Exception as exc:
+            self._startup_error = exc
+            self._startup_event.set()
+            raise
+
+    async def wait_until_ready(self, timeout_ms: float = 5.0) -> None:
+        """Wait until worker startup succeeds or fails."""
+        await asyncio.wait_for(self._startup_event.wait(), timeout=timeout_ms)
+        if self._startup_error is not None:
+            raise self._startup_error
+        if self._subscriber is None:
+            raise RuntimeError("Worker startup completed without creating a subscriber")
 
     async def _process_messages(self) -> None:
         """Keep worker alive to process commands."""

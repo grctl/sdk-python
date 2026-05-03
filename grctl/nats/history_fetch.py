@@ -9,6 +9,36 @@ _FETCH_BATCH_SIZE = 256
 _FETCH_TIMEOUT_SECONDS = 0.25
 
 
+async def fetch_run_history(
+    js: JetStreamContext,
+    manifest: NatsManifest,
+    wf_id: str,
+    run_id: str,
+) -> list[HistoryEvent]:
+    history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
+    history_stream = manifest.history_stream_name()
+    subscription = await js.pull_subscribe(
+        subject=history_subject,
+        stream=history_stream,
+        config=ConsumerConfig(
+            deliver_policy=DeliverPolicy.ALL,
+            ack_policy=AckPolicy.NONE,
+            inactive_threshold=1.0,
+        ),
+    )
+
+    events: list[HistoryEvent] = []
+    try:
+        try:
+            while True:
+                messages = await subscription.fetch(batch=_FETCH_BATCH_SIZE, timeout=_FETCH_TIMEOUT_SECONDS)
+                events.extend(history_decoder(msg.data) for msg in messages if msg.data)
+        except (TimeoutError, FetchTimeoutError):
+            return events
+    finally:
+        await subscription.unsubscribe()
+
+
 async def fetch_step_history(
     js: JetStreamContext,
     manifest: NatsManifest,
