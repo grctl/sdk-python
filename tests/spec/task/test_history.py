@@ -120,8 +120,8 @@ async def test_retried_task_emits_attempt_failed_events(worker, grctl_client) ->
         ],
     )
 
-    assert task_events[1].msg.attempt == 1
-    assert task_events[2].msg.attempt == 2
+    assert task_events[1].msg.attempt == 1  # ty:ignore[unresolved-attribute]
+    assert task_events[2].msg.attempt == 2  # ty:ignore[unresolved-attribute]
 
 
 @pytest.mark.asyncio
