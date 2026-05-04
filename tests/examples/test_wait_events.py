@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 from datetime import timedelta
 
-import pytest
 import ulid
 
 from examples.wait_events import greet_events
@@ -11,7 +10,6 @@ from grctl.nats.connection import Connection
 from grctl.worker.worker import Worker
 
 
-@pytest.mark.asyncio
 async def test_wait_events_example_end_to_end() -> None:
     """Run wait_events example workflow against a live server."""
     connection = await Connection.connect()
@@ -50,7 +48,6 @@ async def test_wait_events_example_end_to_end() -> None:
         Connection.reset()
 
 
-@pytest.mark.asyncio
 async def test_get_workflow_handle_cross_process() -> None:
     """Process 1 starts the workflow; process 2 obtains a handle via get_workflow_handle and drives it to completion."""
     # --- Process 1: start the workflow ---
