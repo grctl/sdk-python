@@ -1,0 +1,26 @@
+[tools]
+uv = "latest"
+
+[tasks.lint]
+description = "Run ruff check"
+run = "uv run ruff check --fix"
+
+[tasks.format]
+description = "Run ruff format"
+run = "uv run ruff format"
+
+[tasks.typecheck]
+description = "Run type checking"
+run = "uvx ty check"
+
+[tasks.check]
+description = "Run all checks"
+depends = ["lint", "format", "typecheck"]
+
+[tasks.test]
+description = "Run tests"
+run = "uv run pytest tests"
+
+[tasks.test_e2e]
+description = "Run e2e tests"
+run = "uv run pytest tests/e2e tests/examples"
