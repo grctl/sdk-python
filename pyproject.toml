@@ -1,6 +1,6 @@
 [project]
 name = "grctl-sdk-python"
-version = "0.1.0"
+version = "0.1.1"
 description = "The Python SDK for the Ground Control"
 readme = "README.md"
 requires-python = ">=3.13"

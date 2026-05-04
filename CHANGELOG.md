@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/grctl/sdk-python/compare/v0.1.0...v0.1.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* tests ([a3061f8](https://github.com/grctl/sdk-python/commit/a3061f82bd8e0c1147ad15ebdb578628b8837682))
+
 ## 0.1.0 (2026-05-02)
 
 
