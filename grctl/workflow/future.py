@@ -41,6 +41,8 @@ class WorkflowFuture(asyncio.Future[Any]):
             run_id=run_info.id,
             handler=self._handle_history_event,
         )
+        self._subscriber_stopped = False
+        self.add_done_callback(self._schedule_subscriber_stop)
         self._history_update_handlers: dict[HistoryKind, Callable[[HistoryEvent], None]] = {
             HistoryKind.run_scheduled: self._on_non_terminal_event,
             HistoryKind.run_started: self._on_non_terminal_event,
@@ -54,9 +56,18 @@ class WorkflowFuture(asyncio.Future[Any]):
         """Start listening for events and publish run command."""
         await self._subscriber.start()
 
+    def _schedule_subscriber_stop(self, _: asyncio.Future) -> None:
+        # done_callback must be sync, so we schedule the async stop as a task.
+        if self._subscriber_stopped:
+            return
+        self._subscriber_stopped = True
+        asyncio.ensure_future(self._subscriber.stop())  # noqa: RUF006
+
     async def stop(self) -> None:
         """Stop listening for events and cleanup."""
-        await self._subscriber.stop()
+        if not self._subscriber_stopped:
+            self._subscriber_stopped = True
+            await self._subscriber.stop()
 
         if not self.done():
             self.cancel()

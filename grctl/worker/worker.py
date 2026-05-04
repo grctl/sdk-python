@@ -19,6 +19,7 @@ from grctl.workflow.workflow import Workflow
 
 logger = get_logger(__name__)
 
+
 # Constants
 DEFAULT_WORKFLOW_TIMEOUT_SECONDS: float = 30.0
 WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 1

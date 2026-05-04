@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+from typing import Any
 
 import msgspec
 from nats.aio.msg import Msg
@@ -11,7 +12,6 @@ from grctl.logging_config import get_logger
 from grctl.models import directive_decoder
 from grctl.nats.manifest import NatsManifest
 from grctl.settings import get_settings
-from grctl.worker.run_manager import RunManager
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class Subscriber:
         js: JetStreamContext,
         manifest: NatsManifest,
         wf_types: list[str],
-        run_manager: RunManager,
+        run_manager: Any,
     ) -> None:
         self._js = js
         self._manifest = manifest
