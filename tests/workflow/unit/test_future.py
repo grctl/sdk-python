@@ -40,7 +40,7 @@ def mock_nc():
 
 
 @pytest.fixture
-def workflow_future(run_info, mock_nc):
+async def workflow_future(run_info, mock_nc):
     with patch("grctl.workflow.future.HistorySubscriber") as mock_sub:
         mock_subscriber = AsyncMock()
         mock_sub.return_value = mock_subscriber
@@ -50,7 +50,7 @@ def workflow_future(run_info, mock_nc):
 
 
 class TestWorkflowFutureInit:
-    def test_init_with_payload(self, run_info, mock_nc):
+    async def test_init_with_payload(self, run_info, mock_nc):
         with patch("grctl.workflow.future.HistorySubscriber") as mock_sub:
             mock_subscriber = AsyncMock()
             mock_sub.return_value = mock_subscriber
@@ -68,7 +68,7 @@ class TestWorkflowFutureInit:
                 handler=future._handle_history_event,
             )
 
-    def test_init_without_payload(self, run_info, mock_nc):
+    async def test_init_without_payload(self, run_info, mock_nc):
         with patch("grctl.workflow.future.HistorySubscriber") as mock_sub:
             mock_subscriber = AsyncMock()
             mock_sub.return_value = mock_subscriber
@@ -79,7 +79,7 @@ class TestWorkflowFutureInit:
             assert future.payload is None
             assert not future.done()
 
-    def test_history_update_handlers_registered(self, workflow_future):
+    async def test_history_update_handlers_registered(self, workflow_future):
         handlers = workflow_future._history_update_handlers
 
         assert HistoryKind.run_scheduled in handlers
@@ -115,7 +115,7 @@ class TestWorkflowFutureStartStop:
 
 
 class TestWorkflowFutureNonTerminalEvents:
-    def test_on_run_scheduled(self, workflow_future, run_info):
+    async def test_on_run_scheduled(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -129,7 +129,7 @@ class TestWorkflowFutureNonTerminalEvents:
 
         assert not workflow_future.done()
 
-    def test_on_run_started(self, workflow_future, run_info):
+    async def test_on_run_started(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -145,7 +145,7 @@ class TestWorkflowFutureNonTerminalEvents:
 
 
 class TestWorkflowFutureRunCompleted:
-    def test_run_completed_sets_result(self, workflow_future, run_info):
+    async def test_run_completed_sets_result(self, workflow_future, run_info):
         result_data = {"status": "success", "value": 42}
         event = HistoryEvent(
             wf_id=run_info.wf_id,
@@ -161,7 +161,7 @@ class TestWorkflowFutureRunCompleted:
         assert workflow_future.done()
         assert workflow_future.result() == result_data
 
-    def test_run_completed_with_none_result(self, workflow_future, run_info):
+    async def test_run_completed_with_none_result(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -176,7 +176,7 @@ class TestWorkflowFutureRunCompleted:
         assert workflow_future.done()
         assert workflow_future.result() is None
 
-    def test_run_completed_when_already_done(self, workflow_future, run_info):
+    async def test_run_completed_when_already_done(self, workflow_future, run_info):
         workflow_future.set_result("first_result")
 
         event = HistoryEvent(
@@ -192,7 +192,7 @@ class TestWorkflowFutureRunCompleted:
 
         assert workflow_future.result() == "first_result"
 
-    def test_run_completed_with_wrong_payload_type(self, workflow_future, run_info):
+    async def test_run_completed_with_wrong_payload_type(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -208,7 +208,7 @@ class TestWorkflowFutureRunCompleted:
 
 
 class TestWorkflowFutureRunFailed:
-    def test_run_failed_sets_exception(self, workflow_future, run_info):
+    async def test_run_failed_sets_exception(self, workflow_future, run_info):
         error = ErrorDetails(type="ValueError", message="Invalid input", stack_trace="traceback here")
         event = HistoryEvent(
             wf_id=run_info.wf_id,
@@ -226,7 +226,7 @@ class TestWorkflowFutureRunFailed:
             workflow_future.result()
         assert "ValueError: Invalid input" in str(exc_info.value)
 
-    def test_run_failed_with_multiple_errors(self, workflow_future, run_info):
+    async def test_run_failed_with_multiple_errors(self, workflow_future, run_info):
         error = ErrorDetails(type="CustomError", message="Something went wrong", stack_trace="trace")
         event = HistoryEvent(
             wf_id=run_info.wf_id,
@@ -244,7 +244,7 @@ class TestWorkflowFutureRunFailed:
             workflow_future.result()
         assert "CustomError: Something went wrong" in str(exc_info.value)
 
-    def test_run_failed_with_empty_message(self, workflow_future, run_info):
+    async def test_run_failed_with_empty_message(self, workflow_future, run_info):
         error = ErrorDetails(type="Error", message="", stack_trace="trace")
         event = HistoryEvent(
             wf_id=run_info.wf_id,
@@ -262,7 +262,7 @@ class TestWorkflowFutureRunFailed:
             workflow_future.result()
         assert "Error:" in str(exc_info.value)
 
-    def test_run_failed_when_already_done(self, workflow_future, run_info):
+    async def test_run_failed_when_already_done(self, workflow_future, run_info):
         workflow_future.set_result("success")
 
         error = ErrorDetails(type="Error", message="test", stack_trace="trace")
@@ -279,7 +279,7 @@ class TestWorkflowFutureRunFailed:
 
         assert workflow_future.result() == "success"
 
-    def test_run_failed_with_wrong_payload_type(self, workflow_future, run_info):
+    async def test_run_failed_with_wrong_payload_type(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -295,7 +295,7 @@ class TestWorkflowFutureRunFailed:
 
 
 class TestWorkflowFutureRunTimeout:
-    def test_run_timeout_sets_exception(self, workflow_future, run_info):
+    async def test_run_timeout_sets_exception(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -312,7 +312,7 @@ class TestWorkflowFutureRunTimeout:
             workflow_future.result()
         assert "5000" in str(exc_info.value)
 
-    def test_run_timeout_when_already_done(self, workflow_future, run_info):
+    async def test_run_timeout_when_already_done(self, workflow_future, run_info):
         workflow_future.set_result("success")
 
         event = HistoryEvent(
@@ -328,7 +328,7 @@ class TestWorkflowFutureRunTimeout:
 
         assert workflow_future.result() == "success"
 
-    def test_run_timeout_with_wrong_payload_type(self, workflow_future, run_info):
+    async def test_run_timeout_with_wrong_payload_type(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -344,7 +344,7 @@ class TestWorkflowFutureRunTimeout:
 
 
 class TestWorkflowFutureRunCancelled:
-    def test_run_cancelled_sets_exception(self, workflow_future, run_info):
+    async def test_run_cancelled_sets_exception(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -360,7 +360,7 @@ class TestWorkflowFutureRunCancelled:
         with pytest.raises(asyncio.CancelledError):
             workflow_future.result()
 
-    def test_run_cancelled_when_already_done(self, workflow_future, run_info):
+    async def test_run_cancelled_when_already_done(self, workflow_future, run_info):
         workflow_future.set_result("success")
 
         event = HistoryEvent(
@@ -376,7 +376,7 @@ class TestWorkflowFutureRunCancelled:
 
         assert workflow_future.result() == "success"
 
-    def test_run_cancelled_with_wrong_payload_type(self, workflow_future, run_info):
+    async def test_run_cancelled_with_wrong_payload_type(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -392,7 +392,7 @@ class TestWorkflowFutureRunCancelled:
 
 
 class TestWorkflowFutureEventHandling:
-    def test_handle_unknown_event_kind(self, workflow_future, run_info):
+    async def test_handle_unknown_event_kind(self, workflow_future, run_info):
         event = HistoryEvent(
             wf_id=run_info.wf_id,
             run_id=run_info.id,
@@ -406,7 +406,7 @@ class TestWorkflowFutureEventHandling:
 
         assert not workflow_future.done()
 
-    def test_handle_event_with_exception(self, workflow_future, run_info):
+    async def test_handle_event_with_exception(self, workflow_future, run_info):
         with patch.object(
             workflow_future,
             "_history_update_handlers",
@@ -427,7 +427,7 @@ class TestWorkflowFutureEventHandling:
             with pytest.raises(ValueError, match="test error"):
                 workflow_future.result()
 
-    def test_handle_event_exception_when_already_done(self, workflow_future, run_info):
+    async def test_handle_event_exception_when_already_done(self, workflow_future, run_info):
         workflow_future.set_result("success")
 
         with patch.object(
