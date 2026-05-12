@@ -71,6 +71,12 @@ async def _task_always_fails() -> None:
     raise ValueError("always fails")
 
 
+@task
+async def _task_record_call(calls: list[str]) -> str:
+    calls.append("called")
+    return "live"
+
+
 class TestTaskReplay:
     # Test 16: @task replays from identity match instead of hash scan
     async def test_task_replays_from_cursor(self) -> None:
@@ -257,17 +263,17 @@ class TestTaskReplayCorrectness:
         # Nothing published — pure replay
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
 
-    # Test 3: TaskCancelled in history re-executes the task live (infrastructure interruption)
-    async def test_cancelled_task_re_executes_live(self) -> None:
+    # Test 3: TaskCancelled in history replays as deterministic cancellation
+    async def test_cancelled_task_replays_cancelled_error(self) -> None:
         temp = _make_runtime([])
-        op_id = temp.generate_operation_id("_task_fetch_user", {"user_id": 5})
+        op_id = temp.generate_operation_id("_task_record_call", {"calls": []})
 
         history = [
             _make_event(
                 HistoryKind.task_cancelled,
                 TaskCancelled(
                     task_id=op_id,
-                    task_name="_task_fetch_user",
+                    task_name="_task_record_call",
                     step_name="step",
                     duration_ms=2,
                 ),
@@ -276,14 +282,13 @@ class TestTaskReplayCorrectness:
         ]
         runtime = _make_runtime(history)
         set_step_runtime(runtime)
+        calls: list[str] = []
 
-        result = await _task_fetch_user(5)
+        with pytest.raises(asyncio.CancelledError):
+            await _task_record_call(calls)
 
-        assert result == {"id": 5, "name": "Live"}
-        # task_started + task_completed published for the live re-execution
-        kinds = [c.kwargs["event"].kind for c in runtime.publisher.publish_history.call_args_list]  # ty:ignore[unresolved-attribute]
-        assert HistoryKind.task_started in kinds
-        assert HistoryKind.task_completed in kinds
+        assert calls == []
+        runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
 
     # Test 4: Unimportable exception class falls back to RuntimeError
     async def test_failed_task_with_unimportable_exception_falls_back_to_runtime_error(self) -> None:
