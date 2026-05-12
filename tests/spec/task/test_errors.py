@@ -1,45 +1,15 @@
 import asyncio
-import time
 from datetime import timedelta
 
 import pytest
 import ulid
 
-from grctl.models import HistoryEvent, HistoryKind
+from grctl.models import HistoryKind
 from grctl.models.directive import RetryPolicy
 from grctl.models.errors import WorkflowError
 from grctl.worker import Context, task
 from grctl.workflow import Directive, Workflow
-
-_POLL_INTERVAL_SECONDS = 0.1
-_HISTORY_TIMEOUT_SECONDS = 5.0
-
-_TASK_HISTORY_KINDS = {
-    HistoryKind.task_started,
-    HistoryKind.task_completed,
-    HistoryKind.task_attempt_failed,
-    HistoryKind.task_failed,
-    HistoryKind.task_cancelled,
-}
-
-
-async def _wait_for_task_history(
-    grctl_client,
-    wf_id: str,
-    run_id: str,
-    expected_kinds: list[HistoryKind],
-) -> list[HistoryEvent]:
-    deadline = time.monotonic() + _HISTORY_TIMEOUT_SECONDS
-
-    while time.monotonic() < deadline:
-        events = await grctl_client.get_history(wf_id, run_id=run_id)
-        task_events = [event for event in events if event.kind in _TASK_HISTORY_KINDS]
-        actual_kinds = [event.kind for event in task_events]
-        if actual_kinds == expected_kinds:
-            return task_events
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-
-    raise AssertionError(f"Timed out waiting for task history {expected_kinds!r} for wf_id={wf_id} run_id={run_id}")
+from tests.spec.task.helpers import wait_for_task_history
 
 
 def _build_retry_exhausted_workflow() -> tuple[Workflow, dict[str, int]]:
@@ -169,7 +139,7 @@ async def test_task_failure_after_retries_still_propagates_to_step_failure(worke
 
     assert retry_exhausted_counter["value"] == 3
 
-    task_events = await _wait_for_task_history(
+    task_events = await wait_for_task_history(
         grctl_client,
         wf_id,
         handle.run_info.id,
@@ -202,7 +172,7 @@ async def test_non_retryable_task_error_fails_step_immediately(worker, grctl_cli
 
     assert non_retryable_counter["value"] == 1
 
-    task_events = await _wait_for_task_history(
+    task_events = await wait_for_task_history(
         grctl_client,
         wf_id,
         handle.run_info.id,
@@ -224,7 +194,7 @@ async def test_cancelled_task_error_propagates_without_retry(worker, grctl_clien
         timeout=timedelta(seconds=30),
     )
 
-    task_events = await _wait_for_task_history(
+    task_events = await wait_for_task_history(
         grctl_client,
         wf_id,
         handle.run_info.id,
