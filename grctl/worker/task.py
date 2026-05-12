@@ -365,7 +365,8 @@ async def _execute_task(
             return raw
         if isinstance(event, TaskFailed):
             raise _reconstruct_error(event.error)
-        # TaskCancelled — task didn't finish; fall through to execute it live
+        if isinstance(event, TaskCancelled):
+            raise asyncio.CancelledError
 
     previous_attempts = sum(
         1
