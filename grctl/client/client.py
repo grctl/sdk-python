@@ -13,7 +13,7 @@ from ulid import ULID
 
 from grctl.models import DescribeCmd, GrctlAPIResponse, HistoryEvent, RunInfo
 from grctl.models.command import CmdKind, Command
-from grctl.models.errors import WorkflowError, WorkflowNotFoundError
+from grctl.models.errors import WorkflowAlreadyRunningError, WorkflowError, WorkflowNotFoundError
 from grctl.nats.connection import Connection
 from grctl.nats.history_fetch import fetch_run_history
 from grctl.worker.codec import CodecRegistry
@@ -21,6 +21,7 @@ from grctl.workflow.handle import WorkflowHandle
 
 logger = logging.getLogger(__name__)
 
+ErrWorkflowAlreadyRunningCode = 4001
 ErrWorkflowRunNotFoundCode = 4002
 
 
@@ -125,5 +126,14 @@ class Client:
         )
 
         # Start the workflow future (subscribe to events and publish run command)
-        await handle.start()
+        response_bytes = await handle.start()
+        response = msgspec.msgpack.decode(response_bytes, type=GrctlAPIResponse)
+        if not response.success:
+            await handle.future.stop()
+            error_msg = response.error.message if response.error else "unknown error"
+            error_code = response.error.code if response.error else 0
+            if error_code == ErrWorkflowAlreadyRunningCode:
+                raise WorkflowAlreadyRunningError(f"workflow '{id}' already has an active run: {error_msg}")
+            raise WorkflowError(f"start_workflow failed (code={error_code}): {error_msg}")
+
         return handle

@@ -77,4 +77,4 @@ if __name__ == "__main__":
     elif mode == "worker":
         asyncio.run(run_worker())
     else:
-        raise SystemExit("Usage: python -m sdk_python.examples.ticker [worker|start]")
+        raise SystemExit("Usage: python -m sdk-python.examples.ticker [worker|start]")

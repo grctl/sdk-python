@@ -4,3 +4,7 @@ class WorkflowError(Exception):
 
 class WorkflowNotFoundError(WorkflowError):
     """Raised when a workflow ID does not correspond to any active run."""
+
+
+class WorkflowAlreadyRunningError(WorkflowError):
+    """Raised when a workflow ID already has an active run."""

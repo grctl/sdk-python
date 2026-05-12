@@ -12,13 +12,6 @@ class WorkflowRunnerNotFoundError(Exception):
         super().__init__(f"WorkflowRunner not found for WorkflowRun ID '{run_id}'.")
 
 
-class WorkflowAlreadyRunningError(Exception):
-    """Exception raised when attempting to start a workflow that is already running."""
-
-    def __init__(self, run_id: str) -> None:
-        super().__init__(f"WorkflowRun ID '{run_id}' is already running.")
-
-
 class NextDirectiveMissingError(Exception):
     """Exception raised when a workflow handler does not return a NextDirective."""
 
