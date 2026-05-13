@@ -33,7 +33,7 @@ class WorkflowHandle:
         logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
         await self.future.start()
 
-    async def start(self) -> None:
+    async def start(self) -> bytes:
         """Start the workflow future (subscribe to events and publish run command)."""
         input_value = self._codec.decode(self._codec.encode(self._payload)) if self._payload is not None else None
         cmd = Command(
@@ -48,7 +48,7 @@ class WorkflowHandle:
         logger.debug("Starting workflow history listener")
         await self.future.start()
         logger.debug("Publishing start command for workflow %s ", cmd)
-        await self._connection.publisher.publish_cmd(self.run_info, cmd)
+        return await self._connection.publisher.publish_cmd(self.run_info, cmd)
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
         normalized = self._codec.decode(self._codec.encode(payload)) if payload is not None else None
