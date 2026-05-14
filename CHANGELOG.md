@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0 (2026-05-14)
+
+
+### Bug Fixes
+
+* client serialisation ([#11](https://github.com/grctl/sdk-python/issues/11)) ([7809aaa](https://github.com/grctl/sdk-python/commit/7809aaa890742fdb38b49601e50f94261f7b9206))
+* history fetch ([#10](https://github.com/grctl/sdk-python/issues/10)) ([4ed4963](https://github.com/grctl/sdk-python/commit/4ed4963350a1349c39c38ec0e415659083261738))
+
 ## [0.1.3](https://github.com/grctl/sdk-python/compare/v0.1.2...v0.1.3) (2026-05-04)
 
 
