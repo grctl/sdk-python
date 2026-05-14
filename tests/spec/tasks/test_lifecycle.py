@@ -9,12 +9,12 @@ from grctl.models.directive import RetryPolicy
 from grctl.models.errors import WorkflowError
 from grctl.worker import Context, task
 from grctl.workflow import Directive, Workflow
-from tests.spec.task.helpers import wait_for_task_history
+from tests.spec.history import HistoryAccess
 
 
 @pytest.mark.asyncio
 async def test_successful_task_emits_started_and_completed(worker, grctl_client) -> None:
-    wf = Workflow(workflow_type="spec_task_history_success")
+    wf = Workflow(workflow_type="spec_task_lifecycle_success")
 
     @task
     async def succeed(value: str) -> str:
@@ -37,11 +37,8 @@ async def test_successful_task_emits_started_and_completed(worker, grctl_client)
 
     assert await asyncio.wait_for(handle.future, timeout=30) == "ok"
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_completed],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_completed]
     )
 
     assert task_events[0].kind == HistoryKind.task_started
@@ -50,7 +47,7 @@ async def test_successful_task_emits_started_and_completed(worker, grctl_client)
 
 @pytest.mark.asyncio
 async def test_retried_task_emits_attempt_failed_events(worker, grctl_client) -> None:
-    wf = Workflow(workflow_type="spec_task_history_retry")
+    wf = Workflow(workflow_type="spec_task_lifecycle_retry")
     call_count = 0
 
     @task(retry_policy=RetryPolicy(max_attempts=3, initial_delay_ms=1, backoff_multiplier=1.0))
@@ -78,16 +75,13 @@ async def test_retried_task_emits_attempt_failed_events(worker, grctl_client) ->
 
     assert await asyncio.wait_for(handle.future, timeout=30) == "ok"
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
         [
             HistoryKind.task_started,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_completed,
-        ],
+        ]
     )
 
     assert task_events[1].msg.attempt == 1  # ty:ignore[unresolved-attribute]
@@ -96,7 +90,7 @@ async def test_retried_task_emits_attempt_failed_events(worker, grctl_client) ->
 
 @pytest.mark.asyncio
 async def test_failed_task_emits_started_and_failed(worker, grctl_client) -> None:
-    wf = Workflow(workflow_type="spec_task_history_failed")
+    wf = Workflow(workflow_type="spec_task_lifecycle_failed")
 
     @task(retry_policy=RetryPolicy(max_attempts=3, initial_delay_ms=1, backoff_multiplier=1.0))
     async def always_fail() -> str:
@@ -120,16 +114,13 @@ async def test_failed_task_emits_started_and_failed(worker, grctl_client) -> Non
     with pytest.raises(WorkflowError, match="RuntimeError: permanent failure"):
         await asyncio.wait_for(handle.future, timeout=30)
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
         [
             HistoryKind.task_started,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_failed,
-        ],
+        ]
     )
 
     assert task_events[-1].kind == HistoryKind.task_failed

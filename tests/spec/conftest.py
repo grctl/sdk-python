@@ -14,6 +14,9 @@ import os
 import pytest
 
 from grctl.client import Client, Connection
+from grctl.nats.manifest import NatsManifest
+from grctl.nats.nats_client import get_nats_client
+from grctl.nats.publisher import Publisher
 from grctl.worker import Worker
 from grctl.workflow.workflow import Workflow
 
@@ -22,13 +25,18 @@ SPEC_NATS_URL = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
 
 @pytest.fixture
 async def nats_connection():
-    conn = await Connection.connect(servers=[SPEC_NATS_URL])
+    # Bypass the Connection singleton so each test gets a truly independent
+    # NATS client. The singleton causes races when fixture teardown (drain)
+    # and the next test's setup interleave on the shared event loop.
+    manifest = NatsManifest.load()
+    nc = await get_nats_client([SPEC_NATS_URL])
+    js = nc.jetstream()
+    publisher = Publisher(nc, js, manifest)
+    conn = Connection(nc, js, manifest, publisher)
     yield conn
-    try:
-        with contextlib.suppress(Exception):
-            await conn.close()
-    finally:
-        Connection.reset()
+    with contextlib.suppress(Exception):
+        if not nc.is_closed:
+            await nc.drain()
 
 
 @pytest.fixture

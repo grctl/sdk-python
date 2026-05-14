@@ -9,7 +9,7 @@ from grctl.models.directive import RetryPolicy
 from grctl.models.errors import WorkflowError
 from grctl.worker import Context, task
 from grctl.workflow import Directive, Workflow
-from tests.spec.task.helpers import wait_for_task_history
+from tests.spec.history import HistoryAccess
 
 
 def _build_retry_exhausted_workflow() -> tuple[Workflow, dict[str, int]]:
@@ -139,16 +139,13 @@ async def test_task_failure_after_retries_still_propagates_to_step_failure(worke
 
     assert retry_exhausted_counter["value"] == 3
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
         [
             HistoryKind.task_started,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_attempt_failed,
             HistoryKind.task_failed,
-        ],
+        ]
     )
 
     assert task_events[1].msg.attempt == 1  # ty:ignore[unresolved-attribute]
@@ -172,11 +169,8 @@ async def test_non_retryable_task_error_fails_step_immediately(worker, grctl_cli
 
     assert non_retryable_counter["value"] == 1
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_failed],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_failed]
     )
 
     assert task_events[-1].kind == HistoryKind.task_failed
@@ -194,11 +188,8 @@ async def test_cancelled_task_error_propagates_without_retry(worker, grctl_clien
         timeout=timedelta(seconds=30),
     )
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_cancelled],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_cancelled]
     )
 
     assert task_events[-1].kind == HistoryKind.task_cancelled

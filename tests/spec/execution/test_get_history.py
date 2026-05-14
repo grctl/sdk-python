@@ -4,27 +4,12 @@ import pytest
 import ulid
 
 from grctl.models import HistoryKind
-from grctl.worker import Context
-from grctl.workflow import Directive, Workflow
-from tests.spec.client.helpers import wait_for_run_history
-
-
-def _unique_wf_type(prefix: str) -> str:
-    return f"{prefix}_{str(ulid.ULID()).lower()}"
-
-
-def _build_completing_workflow(prefix: str, result: str = "ok") -> Workflow:
-    wf = Workflow(workflow_type=_unique_wf_type(prefix))
-
-    @wf.start()
-    async def start(ctx: Context) -> Directive:
-        return ctx.next.complete(result)
-
-    return wf
+from tests.spec.history import HistoryAccess
+from tests.spec.workflows import make_completing_workflow
 
 
 async def test_get_history_returns_ordered_run_events(worker, grctl_client) -> None:
-    wf = _build_completing_workflow("spec_client_history_ordered")
+    wf = make_completing_workflow(prefix="spec_execution_history_ordered")
     await worker([wf])
 
     wf_id = str(ulid.ULID())
@@ -37,11 +22,8 @@ async def test_get_history_returns_ordered_run_events(worker, grctl_client) -> N
 
     assert await handle.future == "ok"
 
-    run_events = await wait_for_run_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.run_started, HistoryKind.run_completed],
+    run_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_run(
+        [HistoryKind.run_started, HistoryKind.run_completed]
     )
 
     assert [event.kind for event in run_events] == [HistoryKind.run_started, HistoryKind.run_completed]
@@ -52,7 +34,7 @@ async def test_get_history_with_explicit_run_id_skips_describe(
     grctl_client,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    wf = _build_completing_workflow("spec_client_history_explicit_run")
+    wf = make_completing_workflow(prefix="spec_execution_history_explicit_run")
     await worker([wf])
 
     wf_id = str(ulid.ULID())
@@ -70,18 +52,15 @@ async def test_get_history_with_explicit_run_id_skips_describe(
 
     monkeypatch.setattr(grctl_client, "describe", fail_describe)
 
-    run_events = await wait_for_run_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.run_started, HistoryKind.run_completed],
+    run_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_run(
+        [HistoryKind.run_started, HistoryKind.run_completed]
     )
 
     assert [event.kind for event in run_events] == [HistoryKind.run_started, HistoryKind.run_completed]
 
 
 async def test_get_history_without_run_id_resolves_latest_run(worker, grctl_client) -> None:
-    wf = _build_completing_workflow("spec_client_history_latest", result="complete")
+    wf = make_completing_workflow(result="complete", prefix="spec_execution_history_latest")
     await worker([wf])
 
     wf_id = str(ulid.ULID())
@@ -92,11 +71,8 @@ async def test_get_history_without_run_id_resolves_latest_run(worker, grctl_clie
         timeout=timedelta(seconds=30),
     )
     assert await first_handle.future == "complete"
-    await wait_for_run_history(
-        grctl_client,
-        wf_id,
-        first_handle.run_info.id,
-        [HistoryKind.run_started, HistoryKind.run_completed],
+    await HistoryAccess(grctl_client, wf_id, first_handle.run_info.id).wait_for_run(
+        [HistoryKind.run_started, HistoryKind.run_completed]
     )
 
     second_handle = await grctl_client.start_workflow(
@@ -106,11 +82,8 @@ async def test_get_history_without_run_id_resolves_latest_run(worker, grctl_clie
         timeout=timedelta(seconds=30),
     )
     assert await second_handle.future == "complete"
-    await wait_for_run_history(
-        grctl_client,
-        wf_id,
-        second_handle.run_info.id,
-        [HistoryKind.run_started, HistoryKind.run_completed],
+    await HistoryAccess(grctl_client, wf_id, second_handle.run_info.id).wait_for_run(
+        [HistoryKind.run_started, HistoryKind.run_completed]
     )
 
     events = await grctl_client.get_history(wf_id)

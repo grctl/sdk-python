@@ -9,7 +9,7 @@ from grctl.models.directive import RetryPolicy
 from grctl.models.errors import WorkflowError
 from grctl.worker import Context, task
 from grctl.workflow import Directive, Workflow
-from tests.spec.task.helpers import wait_for_task_history
+from tests.spec.history import HistoryAccess
 
 
 async def test_task_retries_on_failure_and_succeeds(worker, grctl_client) -> None:
@@ -216,11 +216,8 @@ async def test_cancelled_error_is_never_retried(worker, grctl_client) -> None:
         timeout=timedelta(seconds=30),
     )
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_cancelled],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_cancelled]
     )
 
     assert task_events[-1].kind == HistoryKind.task_cancelled
