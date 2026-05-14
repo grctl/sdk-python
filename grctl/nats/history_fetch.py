@@ -1,9 +1,13 @@
+import logging
+
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 from nats.js.client import JetStreamContext
-from nats.js.errors import FetchTimeoutError
+from nats.js.errors import FetchTimeoutError, ServiceUnavailableError
 
 from grctl.models import HistoryEvent, history_decoder
 from grctl.nats.manifest import NatsManifest
+
+logger = logging.getLogger(__name__)
 
 _FETCH_BATCH_SIZE = 256
 _FETCH_TIMEOUT_SECONDS = 0.25
@@ -29,14 +33,14 @@ async def fetch_run_history(
 
     events: list[HistoryEvent] = []
     try:
-        try:
-            while True:
-                messages = await subscription.fetch(batch=_FETCH_BATCH_SIZE, timeout=_FETCH_TIMEOUT_SECONDS)
-                events.extend(history_decoder(msg.data) for msg in messages if msg.data)
-        except (TimeoutError, FetchTimeoutError):
-            return events
+        while True:
+            messages = await subscription.fetch(batch=_FETCH_BATCH_SIZE, timeout=_FETCH_TIMEOUT_SECONDS)
+            events.extend(history_decoder(msg.data) for msg in messages if msg.data)
+    except (TimeoutError, FetchTimeoutError, ServiceUnavailableError):
+        pass
     finally:
         await subscription.unsubscribe()
+    return events
 
 
 async def fetch_step_history(
@@ -64,11 +68,11 @@ async def fetch_step_history(
 
     events: list[HistoryEvent] = []
     try:
-        try:
-            while True:
-                messages = await subscription.fetch(batch=_FETCH_BATCH_SIZE, timeout=_FETCH_TIMEOUT_SECONDS)
-                events.extend(history_decoder(msg.data) for msg in messages if msg.data)
-        except (TimeoutError, FetchTimeoutError):
-            return [event for event in events if event.operation_id]
+        while True:
+            messages = await subscription.fetch(batch=_FETCH_BATCH_SIZE, timeout=_FETCH_TIMEOUT_SECONDS)
+            events.extend(history_decoder(msg.data) for msg in messages if msg.data)
+    except (TimeoutError, FetchTimeoutError):
+        pass
     finally:
         await subscription.unsubscribe()
+    return [event for event in events if event.operation_id]
