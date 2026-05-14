@@ -6,7 +6,7 @@ Provides a simple interface for interacting with workflows.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypeVar, overload
 
 import msgspec
 from ulid import ULID
@@ -20,6 +20,8 @@ from grctl.worker.codec import CodecRegistry
 from grctl.workflow.handle import WorkflowHandle
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 ErrWorkflowAlreadyRunningCode = 4001
 ErrWorkflowRunNotFoundCode = 4002
@@ -54,13 +56,34 @@ class Client:
 
         return msgspec.msgpack.decode(response.payload, type=RunInfo)
 
+    @overload
+    async def run_workflow(
+        self,
+        type: str,
+        id: str,
+        input: Any | None = ...,
+        timeout: timedelta | None = ...,  # noqa: ASYNC109
+        return_type: type[_T] = ...,
+    ) -> _T: ...
+
+    @overload
+    async def run_workflow(
+        self,
+        type: str,
+        id: str,
+        input: Any | None = ...,
+        timeout: timedelta | None = ...,  # noqa: ASYNC109
+        return_type: None = ...,
+    ) -> Any: ...
+
     async def run_workflow(
         self,
         type: str,  # noqa: A002
         id: str,  # noqa: A002
         input: Any | None = None,  # noqa: A002
         timeout: timedelta | None = None,  # noqa: ASYNC109
-    ) -> Any:
+        return_type: type[_T] | None = None,
+    ) -> _T | Any:
         """Run a workflow and wait for its result."""
         wf_handle = await self.start_workflow(
             type=type,
@@ -70,7 +93,10 @@ class Client:
         )
         wait_timeout = timeout.total_seconds() if timeout else None
         try:
-            return await asyncio.wait_for(wf_handle.future, timeout=wait_timeout)
+            result = await asyncio.wait_for(wf_handle.future, timeout=wait_timeout)
+            if return_type is not None:
+                return self._codec.from_primitive(result, return_type)
+            return result
         finally:
             await wf_handle.future.stop()
 
