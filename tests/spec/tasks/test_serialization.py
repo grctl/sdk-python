@@ -9,12 +9,13 @@ import pytest
 import ulid
 from pydantic import BaseModel
 
+from grctl.client import Client
 from grctl.models import HistoryKind
 from grctl.nats.connection import Connection
 from grctl.worker import Context, task
 from grctl.worker.worker import Worker
 from grctl.workflow import Directive, Workflow
-from tests.spec.task.helpers import wait_for_task_history
+from tests.spec.history import HistoryAccess
 
 _WORKER_INIT_DELAY = 0.5
 _WORKFLOW_TIMEOUT = timedelta(seconds=120)
@@ -70,7 +71,7 @@ def _struct_output_replay_worker(wf_type: str, pause_event=None) -> None:
             assert isinstance(result, StructPayload)
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
-            return ctx.next.complete(msgspec.to_builtins(result))
+            return ctx.next.complete(result)
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
@@ -89,7 +90,7 @@ def _struct_output_replay_worker(wf_type: str, pause_event=None) -> None:
         None,
     ],
 )
-async def test_task_accepts_primitive_inputs(worker, grctl_client, payload: Any) -> None:
+async def test_task_accepts_primitive_inputs(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_primitive_input"))
 
     @task
@@ -122,7 +123,7 @@ async def test_task_accepts_primitive_inputs(worker, grctl_client, payload: Any)
         ["list-case", 3, {"enabled": True}],
     ],
 )
-async def test_task_accepts_dict_and_list_inputs(worker, grctl_client, payload: Any) -> None:
+async def test_task_accepts_dict_and_list_inputs(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_container_input"))
 
     @task
@@ -148,24 +149,21 @@ async def test_task_accepts_dict_and_list_inputs(worker, grctl_client, payload: 
 
     assert await asyncio.wait_for(handle.future, timeout=30) == payload
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_completed],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_completed]
     )
 
     assert task_events[0].msg.args == {"value": payload}  # ty:ignore[unresolved-attribute]
 
 
-async def test_task_accepts_pydantic_input(worker, grctl_client) -> None:
+async def test_task_accepts_pydantic_input(worker, grctl_client: Client) -> None:
     payload = {"name": "pydantic-input", "count": 11, "tags": ["one", "two"]}
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_pydantic_input"))
 
     @task
-    async def inspect_payload(value: PydanticPayload) -> dict[str, Any]:
+    async def inspect_payload(value: PydanticPayload) -> PydanticPayload:
         assert isinstance(value, PydanticPayload)
-        return value.model_dump(mode="python")
+        return value
 
     @wf.start()
     async def start(ctx: Context, value: dict[str, Any]) -> Directive:
@@ -184,24 +182,21 @@ async def test_task_accepts_pydantic_input(worker, grctl_client) -> None:
 
     assert await asyncio.wait_for(handle.future, timeout=30) == payload
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_completed],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_completed]
     )
 
     assert task_events[0].msg.args == {"value": payload}  # ty:ignore[unresolved-attribute]
 
 
-async def test_task_accepts_msgspec_struct_input(worker, grctl_client) -> None:
+async def test_task_accepts_msgspec_struct_input(worker, grctl_client: Client) -> None:
     payload = {"name": "struct-input", "count": 13, "tags": ["one", "two"]}
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_struct_input"))
 
     @task
-    async def inspect_payload(value: StructPayload) -> dict[str, Any]:
+    async def inspect_payload(value: StructPayload) -> StructPayload:
         assert isinstance(value, StructPayload)
-        return msgspec.to_builtins(value)
+        return value
 
     @wf.start()
     async def start(ctx: Context, value: dict[str, Any]) -> Directive:
@@ -220,11 +215,8 @@ async def test_task_accepts_msgspec_struct_input(worker, grctl_client) -> None:
 
     assert await asyncio.wait_for(handle.future, timeout=30) == payload
 
-    task_events = await wait_for_task_history(
-        grctl_client,
-        wf_id,
-        handle.run_info.id,
-        [HistoryKind.task_started, HistoryKind.task_completed],
+    task_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_task(
+        [HistoryKind.task_started, HistoryKind.task_completed]
     )
 
     assert task_events[0].msg.args == {"value": payload}  # ty:ignore[unresolved-attribute]
@@ -239,7 +231,7 @@ async def test_task_accepts_msgspec_struct_input(worker, grctl_client) -> None:
         True,
     ],
 )
-async def test_task_returns_primitive_output(worker, grctl_client, payload: Any) -> None:
+async def test_task_returns_primitive_output(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_primitive_output"))
 
     @task
@@ -272,7 +264,7 @@ async def test_task_returns_primitive_output(worker, grctl_client, payload: Any)
         ["list-output", 19, {"enabled": True}],
     ],
 )
-async def test_task_returns_dict_and_list_output(worker, grctl_client, payload: Any) -> None:
+async def test_task_returns_dict_and_list_output(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_container_output"))
 
     @task
@@ -298,7 +290,7 @@ async def test_task_returns_dict_and_list_output(worker, grctl_client, payload: 
     assert result == payload
 
 
-async def test_task_returns_pydantic_output(worker, grctl_client) -> None:
+async def test_task_returns_pydantic_output(worker, grctl_client: Client) -> None:
     payload = {"name": "pydantic-output", "count": 23, "tags": ["a", "b"]}
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_pydantic_output"))
 
@@ -310,7 +302,7 @@ async def test_task_returns_pydantic_output(worker, grctl_client) -> None:
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert isinstance(result, PydanticPayload)
-        return ctx.next.complete(result.model_dump(mode="python"))
+        return ctx.next.complete(result)
 
     await worker([wf])
 
@@ -324,7 +316,7 @@ async def test_task_returns_pydantic_output(worker, grctl_client) -> None:
     assert result == payload
 
 
-async def test_task_returns_msgspec_struct_output(worker, grctl_client) -> None:
+async def test_task_returns_msgspec_struct_output(worker, grctl_client: Client) -> None:
     payload = {"name": "struct-output", "count": 29, "tags": ["a", "b"]}
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_struct_output"))
 
@@ -336,7 +328,7 @@ async def test_task_returns_msgspec_struct_output(worker, grctl_client) -> None:
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert isinstance(result, StructPayload)
-        return ctx.next.complete(msgspec.to_builtins(result))
+        return ctx.next.complete(result)
 
     await worker([wf])
 
@@ -350,7 +342,7 @@ async def test_task_returns_msgspec_struct_output(worker, grctl_client) -> None:
     assert result == payload
 
 
-async def test_task_returns_none_output(worker, grctl_client) -> None:
+async def test_task_returns_none_output(worker, grctl_client: Client) -> None:
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_none_output"))
 
     @task
@@ -375,7 +367,7 @@ async def test_task_returns_none_output(worker, grctl_client) -> None:
     assert result is None
 
 
-async def test_task_struct_output_is_preserved_on_replay(grctl_client) -> None:
+async def test_task_struct_output_is_preserved_on_replay(grctl_client: Client) -> None:
     pause_event = multiprocessing.Event()
     wf_type = _unique_wf_type("spec_task_serialization_struct_replay")
     expected = {"name": "replayed", "count": 7, "tags": ["a", "b"]}
@@ -394,12 +386,8 @@ async def test_task_struct_output_is_preserved_on_replay(grctl_client) -> None:
     )
 
     try:
-        await wait_for_task_history(
-            grctl_client,
-            wf_id,
-            handle.run_info.id,
-            [HistoryKind.task_started, HistoryKind.task_completed],
-        )
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
+        await history.wait_for_task([HistoryKind.task_started, HistoryKind.task_completed])
         _terminate(worker_a)
         worker_b.start()
 
@@ -407,12 +395,7 @@ async def test_task_struct_output_is_preserved_on_replay(grctl_client) -> None:
 
         assert result == expected
 
-        task_events = await wait_for_task_history(
-            grctl_client,
-            wf_id,
-            handle.run_info.id,
-            [HistoryKind.task_started, HistoryKind.task_completed],
-        )
+        task_events = await history.wait_for_task([HistoryKind.task_started, HistoryKind.task_completed])
         assert task_events[1].msg.output == {"result": expected}  # ty:ignore[unresolved-attribute]
     finally:
         _terminate(worker_a)

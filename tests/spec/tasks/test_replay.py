@@ -1,7 +1,6 @@
 import asyncio
 import multiprocessing
 import os
-import time
 from datetime import timedelta
 
 import pytest
@@ -14,10 +13,10 @@ from grctl.nats.connection import Connection
 from grctl.worker import Context, task
 from grctl.worker.worker import Worker
 from grctl.workflow import Directive, Workflow
+from tests.spec.history import HistoryAccess
 
 _WORKER_INIT_DELAY = 0.5
 _HISTORY_TIMEOUT = 15.0
-_POLL_INTERVAL = 0.1
 _WORKFLOW_TIMEOUT = timedelta(seconds=120)
 
 # Reduce the time server re reliver the task to another worker after a worker failure
@@ -48,26 +47,6 @@ def _configure_fast_replay_redelivery() -> None:
 
 def _unique_wf_type(prefix: str) -> str:
     return f"{prefix}_{str(ulid.ULID()).lower()}"
-
-
-async def _wait_for_history_kind(
-    grctl_client,
-    wf_id: str,
-    run_id: str,
-    kind: HistoryKind,
-) -> None:
-    deadline = time.monotonic() + _HISTORY_TIMEOUT
-    while time.monotonic() < deadline:
-        events = await grctl_client.get_history(wf_id, run_id=run_id)
-        if any(e.kind == kind for e in events):
-            return
-        await asyncio.sleep(_POLL_INTERVAL)
-    raise TimeoutError(f"Timed out waiting for {kind} in wf_id={wf_id}")
-
-
-async def _get_task_events(grctl_client, wf_id: str, run_id: str) -> list:
-    events = await grctl_client.get_history(wf_id, run_id=run_id)
-    return [e for e in events if e.kind in _TASK_HISTORY_KINDS]
 
 
 # ─── Worker process functions ──────────────────────────────────────────────────
@@ -259,7 +238,8 @@ async def test_completed_task_is_skipped_on_step_retry(grctl_client) -> None:
     handle = await grctl_client.start_workflow(type=wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
-        await _wait_for_history_kind(grctl_client, wf_id, handle.run_info.id, HistoryKind.task_completed)
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        _, history_events = await history.wait_for_kind(HistoryKind.task_completed)
         _terminate(worker_a)
         worker_b.start()
 
@@ -267,7 +247,7 @@ async def test_completed_task_is_skipped_on_step_retry(grctl_client) -> None:
 
         assert result == "done"
 
-        task_events = await _get_task_events(grctl_client, wf_id, handle.run_info.id)
+        task_events = [e for e in history_events if e.kind in _TASK_HISTORY_KINDS]
         started = [e for e in task_events if e.kind == HistoryKind.task_started]
         assert len(started) == 1
     finally:
@@ -288,7 +268,9 @@ async def test_completed_task_result_is_preserved_on_step_retry(grctl_client) ->
     handle = await grctl_client.start_workflow(type=wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
-        await _wait_for_history_kind(grctl_client, wf_id, handle.run_info.id, HistoryKind.task_completed)
+        await HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT).wait_for_kind(
+            HistoryKind.task_completed
+        )
         _terminate(worker_a)
         worker_b.start()
 
@@ -313,14 +295,15 @@ async def test_failed_task_is_replayed_as_exception_on_step_retry(grctl_client) 
     handle = await grctl_client.start_workflow(type=wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
-        await _wait_for_history_kind(grctl_client, wf_id, handle.run_info.id, HistoryKind.task_failed)
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        _, history_events = await history.wait_for_kind(HistoryKind.task_failed)
         _terminate(worker_a)
         worker_b.start()
 
         with pytest.raises(WorkflowError, match="ValueError: original error"):
             await asyncio.wait_for(handle.future, timeout=60.0)
 
-        task_events = await _get_task_events(grctl_client, wf_id, handle.run_info.id)
+        task_events = [e for e in history_events if e.kind in _TASK_HISTORY_KINDS]
         started = [e for e in task_events if e.kind == HistoryKind.task_started]
         attempt_failed = [e for e in task_events if e.kind == HistoryKind.task_attempt_failed]
         failed = [e for e in task_events if e.kind == HistoryKind.task_failed]
@@ -345,7 +328,8 @@ async def test_cancelled_task_is_replayed_as_cancelled_error_on_step_retry(grctl
     handle = await grctl_client.start_workflow(type=wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
-        await _wait_for_history_kind(grctl_client, wf_id, handle.run_info.id, HistoryKind.task_cancelled)
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        _, history_events = await history.wait_for_kind(HistoryKind.task_cancelled)
         _terminate(worker_a)
         worker_b.start()
 
@@ -353,7 +337,7 @@ async def test_cancelled_task_is_replayed_as_cancelled_error_on_step_retry(grctl
 
         assert result == "cancelled"
 
-        task_events = await _get_task_events(grctl_client, wf_id, handle.run_info.id)
+        task_events = [e for e in history_events if e.kind in _TASK_HISTORY_KINDS]
         started = [e for e in task_events if e.kind == HistoryKind.task_started]
         cancelled = [e for e in task_events if e.kind == HistoryKind.task_cancelled]
         assert len(started) == 1, "There should be one started event"
@@ -381,7 +365,9 @@ async def test_nondeterminism_raises_when_operation_order_changes(grctl_client) 
     )
 
     try:
-        await _wait_for_history_kind(grctl_client, wf_id, handle.run_info.id, HistoryKind.task_completed)
+        await HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT).wait_for_kind(
+            HistoryKind.task_completed
+        )
         _terminate(worker_a)
         worker_b.start()
 
