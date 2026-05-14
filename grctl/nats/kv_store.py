@@ -37,7 +37,8 @@ class KVStore:
                 return None
 
         except Exception as e:
-            if "key not found" in str(e).lower():
+            msg = str(e).lower()
+            if "key not found" in msg or "no message found" in msg:
                 return None
             raise
         else:
