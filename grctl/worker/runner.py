@@ -122,7 +122,7 @@ class WorkflowRunner:
 
         spec = handler_config.spec
         handler = handler_config.handler
-        if not spec.params:
+        if not spec.params or payload is None:
             directive = await handler(ctx)
 
         # Single param: if payload is already keyed by param name use the value,
