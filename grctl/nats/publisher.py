@@ -42,5 +42,5 @@ class Publisher:
     ) -> bytes:
         subject = self._manifest.api_subject(wf_id=run.wf_id)
         data = command_encoder(cmd)
-        msg = await self._nc.request(subject, data)
+        msg = await self._nc.request(subject, data, timeout=5.0)
         return msg.data
