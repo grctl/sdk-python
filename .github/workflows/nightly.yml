@@ -55,8 +55,8 @@ jobs:
           cat /tmp/grctld.log
           exit 1
 
-      - name: Run E2E tests
-        run: mise run test_e2e
+      - name: Run tests
+        run: mise run test
 
       - name: Stop Server
         if: always()
