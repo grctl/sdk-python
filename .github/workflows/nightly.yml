@@ -5,6 +5,9 @@ on:
     - cron: "0 4 * * *" # Every night at 04:00 UTC (after grctl server nightly at 02:00)
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   e2e-tests:
     name: E2E Integration Tests
