@@ -1,5 +1,6 @@
+import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from ulid import ULID
 
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_T = TypeVar("_T")
+
 
 class WorkflowHandle:
     def __init__(
@@ -21,11 +24,13 @@ class WorkflowHandle:
         payload: Any | None,
         connection: "Connection",
         codec: CodecRegistry | None = None,
+        return_type: type | None = None,
     ) -> None:
         self.run_info = run_info
         self._payload = payload
         self._connection = connection
         self._codec = codec or CodecRegistry()
+        self._return_type = return_type
         self.future = WorkflowFuture(run_info, connection.nc, payload)
 
     async def attach(self) -> None:
@@ -64,6 +69,31 @@ class WorkflowHandle:
         )
         logger.debug("Publishing event command for workflow %s", cmd)
         await self._connection.publisher.publish_cmd(self.run_info, cmd)
+
+    @overload
+    async def result(self, timeout: float | None = ..., return_type: type[_T] = ...) -> _T: ...  # noqa: ASYNC109
+
+    @overload
+    async def result(self, timeout: float | None = ..., return_type: None = ...) -> Any: ...  # noqa: ASYNC109
+
+    async def result(
+        self,
+        timeout: float | None = None,  # noqa: ASYNC109
+        return_type: type[_T] | None = None,
+    ) -> _T | Any:
+        """Wait for workflow completion and return its result.
+
+        timeout: client-side wait in seconds, independent of any server-side execution timeout.
+        return_type: overrides the type bound at start time; falls back to handle's bound type.
+        """
+        resolved_type = return_type or self._return_type
+        try:
+            raw = await asyncio.wait_for(self.future, timeout=timeout)
+            if resolved_type is not None:
+                return self._codec.from_primitive(raw, resolved_type)
+            return raw
+        finally:
+            await self.future.stop()
 
     async def query(self, query_name: str) -> Any:
         raise NotImplementedError("query() not yet implemented")

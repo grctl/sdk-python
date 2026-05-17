@@ -3,7 +3,6 @@
 Provides a simple interface for interacting with workflows.
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar, overload
@@ -90,15 +89,10 @@ class Client:
             id=id,
             input=input,
             timeout=timeout,
+            return_type=return_type,
         )
         wait_timeout = timeout.total_seconds() if timeout else None
-        try:
-            result = await asyncio.wait_for(wf_handle.future, timeout=wait_timeout)
-            if return_type is not None:
-                return self._codec.from_primitive(result, return_type)
-            return result
-        finally:
-            await wf_handle.future.stop()
+        return await wf_handle.result(timeout=wait_timeout)
 
     async def get_workflow_handle(self, wfid: str) -> WorkflowHandle:
         """Get a handle for an already-running workflow."""
@@ -132,6 +126,7 @@ class Client:
         id: str,  # noqa: A002
         input: Any | None = None,  # noqa: A002
         timeout: timedelta | None = None,  # noqa: ASYNC109
+        return_type: type | None = None,
     ) -> WorkflowHandle:
         """Start a workflow and return a handle to track and interact with it."""
         workflow_run_id = str(ULID())
@@ -149,6 +144,7 @@ class Client:
             payload=input,
             connection=self._connection,
             codec=self._codec,
+            return_type=return_type,
         )
 
         # Start the workflow future (subscribe to events and publish run command)

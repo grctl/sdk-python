@@ -184,6 +184,52 @@ async def test_workflow_returns_dict_and_list_output(worker, grctl_client: Clien
     assert result == payload
 
 
+async def test_start_workflow_result_deserializes_pydantic_output(worker, grctl_client: Client) -> None:
+    model = PydanticPayload(name="pydantic-handle", count=31, tags=["x", "y"])
+    wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_handle_pydantic"))
+
+    @wf.start()
+    async def start(ctx: Context, value: PydanticPayload) -> Directive:
+        return ctx.next.complete(value)
+
+    await worker([wf])
+
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=str(ulid.ULID()),
+        input={"value": model},
+        timeout=timedelta(seconds=30),
+        return_type=PydanticPayload,
+    )
+    result = await handle.result(timeout=30)
+
+    assert isinstance(result, PydanticPayload)
+    assert result == model
+
+
+async def test_start_workflow_result_deserializes_struct_output(worker, grctl_client: Client) -> None:
+    struct = StructPayload(name="struct-handle", count=37, tags=["x", "y"])
+    wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_handle_struct"))
+
+    @wf.start()
+    async def start(ctx: Context, value: StructPayload) -> Directive:
+        return ctx.next.complete(value)
+
+    await worker([wf])
+
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=str(ulid.ULID()),
+        input={"value": struct},
+        timeout=timedelta(seconds=30),
+        return_type=StructPayload,
+    )
+    result = await handle.result(timeout=30)
+
+    assert isinstance(result, StructPayload)
+    assert result == struct
+
+
 async def test_workflow_returns_none_output(worker, grctl_client: Client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_none_output"))
 
@@ -198,8 +244,7 @@ async def test_workflow_returns_none_output(worker, grctl_client: Client) -> Non
         id=str(ulid.ULID()),
         input={},
         timeout=timedelta(seconds=30),
+        return_type=None,
     )
 
     assert result is None
-
-
