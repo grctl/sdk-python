@@ -6,13 +6,20 @@ import logging
 import typing
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from grctl.models.directive import Directive
 
 logger = logging.getLogger(__name__)
 
-_HandlerF = TypeVar("_HandlerF", bound=Callable[..., Awaitable[Directive]])
+
+class _Handler(Protocol):
+    __name__: str
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[Directive]: ...
+
+
+_HandlerF = TypeVar("_HandlerF", bound=_Handler)
 
 
 @dataclasses.dataclass

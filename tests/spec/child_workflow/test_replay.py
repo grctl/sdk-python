@@ -373,6 +373,7 @@ async def test_nondeterminism_raises_when_send_to_parent_event_name_changes(grct
         type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT
     )
 
+    child_handle = None
     try:
         parent_history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
         child_started_event, _ = await parent_history.wait_for_kind(HistoryKind.child_started)
@@ -386,8 +387,12 @@ async def test_nondeterminism_raises_when_send_to_parent_event_name_changes(grct
         _terminate(worker_a)
         worker_b.start()
 
+        # Nondeterminism happens in the child — await the child's future, not the parent's.
+        # Worker A already sent "status_v1" to the parent (completing it), then paused.
+        # Worker B replays and tries "status_v2" — the op_id mismatch in history raises NonDeterminismError.
+        child_handle = await grctl_client.get_workflow_handle(child_started.wf_id)
         with pytest.raises(WorkflowError, match="NonDeterminism"):
-            await asyncio.wait_for(handle.future, timeout=60.0)
+            await asyncio.wait_for(child_handle.future, timeout=60.0)
     finally:
         _terminate(worker_a)
         _terminate(worker_b)

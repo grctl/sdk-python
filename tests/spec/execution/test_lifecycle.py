@@ -126,6 +126,47 @@ async def test_start_workflow_raises_when_wf_id_already_active(worker, grctl_cli
         await handle.future.stop()
 
 
+async def test_cancel_workflow_future_raises_cancelled_error(worker, grctl_client) -> None:
+    wf = make_waiting_event_workflow(prefix="spec_execution_cancel_error")
+    await worker([wf])
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=wf_id,
+        input={},
+        timeout=timedelta(seconds=30),
+    )
+    await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_run([HistoryKind.run_started])
+
+    await handle.cancel(reason="test cancellation")
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(handle.future, timeout=15)
+
+
+async def test_cancel_workflow_emits_history_events(worker, grctl_client) -> None:
+    wf = make_waiting_event_workflow(prefix="spec_execution_cancel_history")
+    await worker([wf])
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=wf_id,
+        input={},
+        timeout=timedelta(seconds=30),
+    )
+    history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
+    await history.wait_for_run([HistoryKind.run_started])
+
+    await handle.cancel()
+
+    await history.wait_for_kind(HistoryKind.run_cancelled)
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(handle.future, timeout=5)
+
+
 async def test_get_workflow_handle_raises_not_found_for_unknown_wf_id(grctl_client) -> None:
     with pytest.raises(WorkflowNotFoundError):
         await grctl_client.get_workflow_handle(str(ulid.ULID()))
