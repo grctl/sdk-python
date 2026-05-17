@@ -154,6 +154,64 @@ def _replay_cancelled_worker(wf_type: str, pause_event=None) -> None:
     asyncio.run(run())
 
 
+def _ndet_input_v1_worker(wf_type: str, pause_event=None) -> None:
+    """Worker A: calls task with arg 'hello', then pauses. Killed before step completes."""
+
+    async def run() -> None:
+        _configure_fast_replay_redelivery()
+        nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
+        wf = Workflow(workflow_type=wf_type)
+
+        @task
+        async def greet(value: str) -> str:
+            return value.upper()
+
+        @wf.start()
+        async def start(ctx: Context) -> Directive:
+            return ctx.next.step(work_step)
+
+        @wf.step()
+        async def work_step(ctx: Context) -> Directive:
+            result = await greet(value="hello")
+            if pause_event is not None:
+                await asyncio.to_thread(pause_event.wait)
+            return ctx.next.complete(result)
+
+        conn = await Connection.connect(servers=[nats_url])
+        wk = Worker(workflows=[wf], connection=conn)
+        await wk.start()
+
+    asyncio.run(run())
+
+
+def _ndet_input_v2_worker(wf_type: str) -> None:
+    """Worker B: calls same task with arg 'world' — diverges from history → NonDeterminismError."""
+
+    async def run() -> None:
+        _configure_fast_replay_redelivery()
+        nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
+        wf = Workflow(workflow_type=wf_type)
+
+        @task
+        async def greet(value: str) -> str:
+            return value.upper()
+
+        @wf.start()
+        async def start(ctx: Context) -> Directive:
+            return ctx.next.step(work_step)
+
+        @wf.step()
+        async def work_step(ctx: Context) -> Directive:
+            result = await greet(value="world")  # different input: diverges from history
+            return ctx.next.complete(result)
+
+        conn = await Connection.connect(servers=[nats_url])
+        wk = Worker(workflows=[wf], connection=conn)
+        await wk.start()
+
+    asyncio.run(run())
+
+
 def _ndet_v1_worker(wf_type: str, pause_event=None) -> None:
     """Worker A: executes task_a then pauses. Killed before task_b runs."""
 
@@ -342,6 +400,37 @@ async def test_cancelled_task_is_replayed_as_cancelled_error_on_step_retry(grctl
         cancelled = [e for e in task_events if e.kind == HistoryKind.task_cancelled]
         assert len(started) == 1, "There should be one started event"
         assert len(cancelled) == 1, "There should be one cancelled event"
+    finally:
+        _terminate(worker_a)
+        _terminate(worker_b)
+
+
+async def test_nondeterminism_raises_when_task_input_changes(grctl_client) -> None:
+    pause_event = multiprocessing.Event()
+    wf_type = _unique_wf_type("spec_task_replay_ndet_input")
+
+    worker_a = multiprocessing.Process(target=_ndet_input_v1_worker, args=(wf_type, pause_event), daemon=True)
+    worker_b = multiprocessing.Process(target=_ndet_input_v2_worker, args=(wf_type,), daemon=True)
+    worker_a.start()
+    await asyncio.sleep(_WORKER_INIT_DELAY)
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(
+        type=wf_type,
+        id=wf_id,
+        input={},
+        timeout=_WORKFLOW_TIMEOUT,
+    )
+
+    try:
+        await HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT).wait_for_kind(
+            HistoryKind.task_completed
+        )
+        _terminate(worker_a)
+        worker_b.start()
+
+        with pytest.raises(WorkflowError, match="NonDeterminism"):
+            await asyncio.wait_for(handle.future, timeout=60.0)
     finally:
         _terminate(worker_a)
         _terminate(worker_b)

@@ -2,7 +2,6 @@ import asyncio
 import time
 from datetime import timedelta
 
-import pytest
 import ulid
 
 from grctl.models import HistoryKind
@@ -30,7 +29,6 @@ def _make_timeout_workflow() -> Workflow:
     return wf
 
 
-@pytest.mark.skip("Feature gap")
 async def test_wait_for_event_timeout_runs_timeout_step(worker, grctl_client) -> None:
     wf = _make_timeout_workflow()
     await worker([wf])
@@ -67,7 +65,6 @@ async def test_wait_for_event_timeout_runs_timeout_step(worker, grctl_client) ->
         await handle.future.stop()
 
 
-@pytest.mark.skip("Feature gap")
 async def test_wait_for_event_timeout_step_completes_workflow(worker, grctl_client) -> None:
     wf = _make_timeout_workflow()
     await worker([wf])

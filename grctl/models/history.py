@@ -16,6 +16,7 @@ class HistoryKind(StrEnum):
     run_cancelled = "run.cancelled"
     run_timeout = "run.timeout"
     wait_event_started = "wait_event.started"
+    wait_event_timed_out = "wait_event.timed_out"
     event_received = "event.received"
     step_started = "step.started"
     step_completed = "step.completed"
@@ -112,6 +113,12 @@ class StepTimeout(msgspec.Struct):
 
 class WaitEventStarted(msgspec.Struct):
     """Wait for event started."""
+
+
+class WaitEventTimedOut(msgspec.Struct):
+    """Wait for event timed out; timeout step dispatched."""
+
+    timeout_step_name: str
 
 
 class EventReceived(msgspec.Struct):
@@ -215,7 +222,7 @@ class ParentEventSent(msgspec.Struct):
 
 
 RunEvents = RunCancelScheduled | RunCancelled | RunCompleted | RunFailed | RunScheduled | RunStarted | RunTimeout
-WaitEvents = WaitEventStarted | EventReceived
+WaitEvents = WaitEventStarted | WaitEventTimedOut | EventReceived
 StepEvents = StepStarted | StepCompleted | StepFailed | StepCancelled | StepTimeout
 TaskEvents = TaskStarted | TaskCompleted | TaskFailed | TaskAttemptFailed | TaskCancelled
 DeterministicEvents = TimestampRecorded | RandomRecorded | UuidRecorded | SleepRecorded
@@ -233,6 +240,7 @@ HistoryEvents = (
     | StepCancelled
     | StepTimeout
     | WaitEventStarted
+    | WaitEventTimedOut
     | EventReceived
     | TaskStarted
     | TaskCompleted
@@ -270,6 +278,7 @@ history_factories: dict[str, type] = {
     "run.cancelled": RunCancelled,
     "run.timeout": RunTimeout,
     "wait_event.started": WaitEventStarted,
+    "wait_event.timed_out": WaitEventTimedOut,
     "event.received": EventReceived,
     "step.started": StepStarted,
     "step.completed": StepCompleted,
