@@ -19,9 +19,7 @@ class RunStatus(StrEnum):
 class RunStateKind(StrEnum):
     start = "start"
     step = "step"
-    sleep = "sleep"
-    sleep_until = "sleep_until"
-    wait_event = "wait_event"
+    wait = "wait"
     complete = "complete"
     fail = "fail"
     cancel = "cancel"

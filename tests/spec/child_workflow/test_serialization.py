@@ -227,7 +227,7 @@ async def test_send_to_parent_preserves_primitive_payload(worker, grctl_client: 
     @parent_wf.start()
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-        return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+        return ctx.next.wait()
 
     @parent_wf.event(name="result")
     async def on_result(ctx: Context, payload: Any) -> Directive:
@@ -263,7 +263,7 @@ async def test_send_to_parent_preserves_struct_payload(worker, grctl_client: Cli
     @parent_wf.start()
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-        return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+        return ctx.next.wait()
 
     @parent_wf.event(name="result")
     async def on_result(ctx: Context, payload: StructPayload) -> Directive:

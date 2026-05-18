@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload
 from ulid import ULID
 
 from grctl.logging_config import get_logger
-from grctl.models import CmdKind, CancelCmd, Command, EventCmd, RunInfo, StartCmd
+from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd
 from grctl.worker.codec import CodecRegistry
 from grctl.workflow.future import WorkflowFuture
 

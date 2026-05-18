@@ -54,25 +54,11 @@ class Step(msgspec.Struct):
     timeout_ms: int | None = 3_000  # 3 seconds in nanoseconds (Go time.Duration)
 
 
-class WaitEvent(msgspec.Struct):
-    """Worker directive to wait for events."""
+class Wait(msgspec.Struct):
+    """Worker directive to park the run; optionally times out to a named step."""
 
-    timeout_ms: int = 3000
-    timeout_step_name: str | None = None
-
-
-class Sleep(msgspec.Struct):
-    """Worker directive to sleep for duration."""
-
-    next_step_name: str
-    duration_ms: int = 3000
-
-
-class SleepUntil(msgspec.Struct):
-    """Worker directive to sleep until timestamp."""
-
-    until: datetime
-    next_step_name: str
+    timeout_ms: int = 0
+    timeout_step_name: str = ""
 
 
 class Complete(msgspec.Struct):
@@ -95,9 +81,8 @@ class DirectiveKind(StrEnum):
     fail = "fail"
     step = "step"
     event = "event"
-    wait_event = "wait_event"
-    sleep = "sleep"
-    sleep_until = "sleep_until"
+    wait = "wait"
+    wait_timeout = "wait_timeout"
     step_result = "step_result"
 
 
@@ -115,7 +100,7 @@ class StepResult(msgspec.Struct):
     duration_ms: int = 0
 
 
-DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | WaitEvent | Sleep | SleepUntil | StepResult
+DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | Wait | StepResult
 
 
 # Factory map for kind-based deserialization
@@ -126,9 +111,7 @@ directive_factories: dict[str, type[DirectiveMessage]] = {
     "complete": Complete,
     "fail": Fail,
     "step": Step,
-    "wait_event": WaitEvent,
-    "sleep": Sleep,
-    "sleep_until": SleepUntil,
+    "wait": Wait,
     "step_result": StepResult,
 }
 

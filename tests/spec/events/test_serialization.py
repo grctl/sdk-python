@@ -48,7 +48,7 @@ async def test_event_payload_preserved(worker, grctl_client: Client, payload: An
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def receive(ctx: Context, value: Any = None) -> Directive:
@@ -66,7 +66,7 @@ async def test_event_payload_preserved(worker, grctl_client: Client, payload: An
 
     # try:
     history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
-    await history.wait_for_kind(HistoryKind.wait_event_started)
+    await history.wait_for_kind(HistoryKind.wait_started)
     await handle.send("receive", send_payload)
 
     result = await asyncio.wait_for(handle.future, timeout=30)
@@ -88,7 +88,7 @@ async def test_event_payload_msgspec_struct_preserved(worker, grctl_client: Clie
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def receive(ctx: Context, value: StructPayload) -> Directive:
@@ -106,7 +106,7 @@ async def test_event_payload_msgspec_struct_preserved(worker, grctl_client: Clie
 
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
-        await history.wait_for_kind(HistoryKind.wait_event_started)
+        await history.wait_for_kind(HistoryKind.wait_started)
         await handle.send("receive", {"value": struct})
 
         result = await asyncio.wait_for(handle.future, timeout=30)
@@ -121,7 +121,7 @@ async def test_event_payload_pydantic_model_preserved(worker, grctl_client: Clie
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def receive(ctx: Context, value: PydanticPayload) -> Directive:
@@ -139,7 +139,7 @@ async def test_event_payload_pydantic_model_preserved(worker, grctl_client: Clie
 
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
-        await history.wait_for_kind(HistoryKind.wait_event_started)
+        await history.wait_for_kind(HistoryKind.wait_started)
         await handle.send("receive", {"value": model})
 
         result = await asyncio.wait_for(handle.future, timeout=30)

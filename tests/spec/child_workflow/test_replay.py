@@ -105,7 +105,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="child_done")
         async def on_child_done(ctx: Context) -> Directive:
@@ -145,7 +145,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:
@@ -184,7 +184,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:
@@ -288,9 +288,7 @@ async def test_ctx_start_skips_duplicate_child_on_step_retry(grctl_client: Clien
     await asyncio.sleep(_WORKER_INIT_DELAY)
 
     wf_id = str(ulid.ULID())
-    handle = await grctl_client.start_workflow(
-        type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT
-    )
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
@@ -325,9 +323,7 @@ async def test_send_to_parent_skips_duplicate_event_on_step_retry(grctl_client: 
     await asyncio.sleep(_WORKER_INIT_DELAY)
 
     wf_id = str(ulid.ULID())
-    handle = await grctl_client.start_workflow(
-        type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT
-    )
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
         parent_history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
@@ -335,9 +331,7 @@ async def test_send_to_parent_skips_duplicate_event_on_step_retry(grctl_client: 
         child_started = child_started_event.msg
         assert isinstance(child_started, ChildWorkflowStarted)
 
-        child_history = HistoryAccess(
-            grctl_client, child_started.wf_id, child_started.run_id, timeout=_HISTORY_TIMEOUT
-        )
+        child_history = HistoryAccess(grctl_client, child_started.wf_id, child_started.run_id, timeout=_HISTORY_TIMEOUT)
         await child_history.wait_for_kind(HistoryKind.parent_event_sent)
         _terminate(worker_a)
         worker_b.start()
@@ -369,9 +363,7 @@ async def test_nondeterminism_raises_when_send_to_parent_event_name_changes(grct
     await asyncio.sleep(_WORKER_INIT_DELAY)
 
     wf_id = str(ulid.ULID())
-    handle = await grctl_client.start_workflow(
-        type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT
-    )
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     child_handle = None
     try:
@@ -380,9 +372,7 @@ async def test_nondeterminism_raises_when_send_to_parent_event_name_changes(grct
         child_started = child_started_event.msg
         assert isinstance(child_started, ChildWorkflowStarted)
 
-        child_history = HistoryAccess(
-            grctl_client, child_started.wf_id, child_started.run_id, timeout=_HISTORY_TIMEOUT
-        )
+        child_history = HistoryAccess(grctl_client, child_started.wf_id, child_started.run_id, timeout=_HISTORY_TIMEOUT)
         await child_history.wait_for_kind(HistoryKind.parent_event_sent)
         _terminate(worker_a)
         worker_b.start()
@@ -413,9 +403,7 @@ async def test_nondeterministic_child_id_raises_nondeterminism_error(grctl_clien
     await asyncio.sleep(_WORKER_INIT_DELAY)
 
     wf_id = str(ulid.ULID())
-    handle = await grctl_client.start_workflow(
-        type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT
-    )
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
 
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)

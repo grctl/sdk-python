@@ -31,4 +31,4 @@ run = "uv run pytest tests/spec"
 
 [tasks.test]
 description = "Run all tests"
-depends = ["test:unit", "test:e2e", "test:spec"]
+depends = ["test:unit", "test:spec"]

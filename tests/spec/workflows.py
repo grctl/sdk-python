@@ -52,15 +52,12 @@ def make_echo_workflow(prefix: str = "spec_echo") -> Workflow:
     return wf
 
 
-def make_waiting_event_workflow(
-    event_timeout: timedelta = timedelta(seconds=30),
-    prefix: str = "spec_waiting_event",
-) -> Workflow:
+def make_waiting_event_workflow(prefix: str = "spec_waiting_event") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event(timeout=event_timeout)
+        return ctx.next.wait()
 
     @wf.event()
     async def finish(ctx: Context, result: str = "done") -> Directive:

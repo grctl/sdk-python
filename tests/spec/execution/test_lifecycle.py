@@ -87,7 +87,7 @@ async def test_run_workflow_raises_workflow_error_on_failure(worker, grctl_clien
 
 
 async def test_workflow_future_raises_timeout_on_workflow_timeout(worker, grctl_client) -> None:
-    wf = make_waiting_event_workflow(event_timeout=timedelta(seconds=60), prefix="spec_execution_timeout")
+    wf = make_waiting_event_workflow(prefix="spec_execution_timeout")
     await worker([wf])
 
     handle = await grctl_client.start_workflow(
@@ -102,7 +102,7 @@ async def test_workflow_future_raises_timeout_on_workflow_timeout(worker, grctl_
 
 
 async def test_start_workflow_raises_when_wf_id_already_active(worker, grctl_client) -> None:
-    wf = make_waiting_event_workflow(event_timeout=timedelta(seconds=1), prefix="spec_execution_duplicate")
+    wf = make_waiting_event_workflow(prefix="spec_execution_duplicate")
     await worker([wf])
 
     wf_id = str(ulid.ULID())

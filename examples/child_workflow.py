@@ -99,7 +99,7 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
         payment_handle.run_info.id,
         validated_id,
     )
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 @order_wf.event(name="payment_completed")

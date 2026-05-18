@@ -17,9 +17,9 @@ def _make_timeout_workflow() -> Workflow:
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event(
+        return ctx.next.wait(
             timeout=timedelta(milliseconds=100),
-            timeout_step_name="on_timeout",
+            on_timeout=on_timeout,
         )
 
     @wf.step()
@@ -29,7 +29,7 @@ def _make_timeout_workflow() -> Workflow:
     return wf
 
 
-async def test_wait_for_event_timeout_runs_timeout_step(worker, grctl_client) -> None:
+async def test_wait_timeout_runs_timeout_step(worker, grctl_client) -> None:
     wf = _make_timeout_workflow()
     await worker([wf])
 
@@ -65,7 +65,7 @@ async def test_wait_for_event_timeout_runs_timeout_step(worker, grctl_client) ->
         await handle.future.stop()
 
 
-async def test_wait_for_event_timeout_step_completes_workflow(worker, grctl_client) -> None:
+async def test_wait_timeout_step_completes_workflow(worker, grctl_client) -> None:
     wf = _make_timeout_workflow()
     await worker([wf])
 

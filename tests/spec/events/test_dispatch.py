@@ -16,7 +16,7 @@ async def test_multiple_event_types_dispatch_to_correct_handlers(worker, grctl_c
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def approve(ctx: Context) -> Directive:
@@ -46,13 +46,13 @@ async def test_multiple_event_types_dispatch_to_correct_handlers(worker, grctl_c
 
     try:
         history_approve = HistoryAccess(grctl_client, wf_id_approve, handle_approve.run_info.id)
-        await history_approve.wait_for_kind(HistoryKind.wait_event_started)
+        await history_approve.wait_for_kind(HistoryKind.wait_started)
         await handle_approve.send("approve")
         result_approve = await asyncio.wait_for(handle_approve.future, timeout=30)
         assert result_approve == "approve"
 
         history_reject = HistoryAccess(grctl_client, wf_id_reject, handle_reject.run_info.id)
-        await history_reject.wait_for_kind(HistoryKind.wait_event_started)
+        await history_reject.wait_for_kind(HistoryKind.wait_started)
         await handle_reject.send("reject")
         result_reject = await asyncio.wait_for(handle_reject.future, timeout=30)
         assert result_reject == "reject"
@@ -66,11 +66,11 @@ async def test_event_handler_can_loop_back_to_wait(worker, grctl_client) -> None
 
     @wf.start()
     async def start(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def first_event(ctx: Context) -> Directive:
-        return ctx.next.wait_for_event()
+        return ctx.next.wait()
 
     @wf.event()
     async def second_event(ctx: Context) -> Directive:
@@ -89,17 +89,17 @@ async def test_event_handler_can_loop_back_to_wait(worker, grctl_client) -> None
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
 
-        await history.wait_for_kind(HistoryKind.wait_event_started)
+        await history.wait_for_kind(HistoryKind.wait_started)
         await handle.send("first_event")
 
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline:
             events = await history.events()
-            if sum(1 for e in events if e.kind == HistoryKind.wait_event_started) >= 2:
+            if sum(1 for e in events if e.kind == HistoryKind.wait_started) >= 2:
                 break
             await asyncio.sleep(0.1)
         else:
-            raise AssertionError(f"Timed out waiting for second wait_event.started — wf_id={wf_id}")
+            raise AssertionError(f"Timed out waiting for second wait.started — wf_id={wf_id}")
 
         await handle.send("second_event")
         result = await asyncio.wait_for(handle.future, timeout=30)

@@ -27,7 +27,7 @@ from grctl.models import (
     StepResult,
     TimestampRecorded,
     UuidRecorded,
-    WaitEvent,
+    Wait,
 )
 from grctl.worker.logger import ReplayAwareLogger
 from grctl.worker.runtime import get_step_runtime
@@ -82,14 +82,18 @@ class NextBuilder:
             id=str(ULID()), kind=DirectiveKind.step_result, run_info=self._run, timestamp=datetime.now(UTC), msg=res
         )
 
-    def wait_for_event(self, timeout: timedelta | None = None, timeout_step_name: str | None = None) -> Directive:
+    def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive:
+        if (timeout is None) != (on_timeout is None):
+            raise ValueError("timeout and on_timeout must both be provided or both omitted")
+
+        timeout_step_name = getattr(on_timeout, "__name__", "") if on_timeout is not None else ""
         res = StepResult(
             processed_msg_kind=self._current_directive.kind,
             processed_msg=self._current_directive.msg,
             worker_id=self._worker_id,
             kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.wait_event,
-            next_msg=WaitEvent(
+            next_msg_kind=DirectiveKind.wait,
+            next_msg=Wait(
                 timeout_ms=int(timeout.total_seconds() * 1000) if timeout else 0,
                 timeout_step_name=timeout_step_name,
             ),

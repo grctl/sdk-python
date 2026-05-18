@@ -29,7 +29,7 @@ async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_cli
     @parent_wf.start()
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-        return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+        return ctx.next.wait()
 
     @parent_wf.event(name="result_ready")
     async def on_result(ctx: Context, payload: str) -> Directive:
