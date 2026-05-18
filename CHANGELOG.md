@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.1.4...grctl-sdk-python-v0.2.0) (2026-05-18)
+
+
+### Features
+
+* new wait state ([#18](https://github.com/grctl/sdk-python/issues/18)) ([68384a6](https://github.com/grctl/sdk-python/commit/68384a6eba1455151d2f73bbd7775b887a127488))
+
 ## [0.1.4](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.1.3...grctl-sdk-python-v0.1.4) (2026-05-14)
 
 
