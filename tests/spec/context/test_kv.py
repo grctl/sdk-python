@@ -76,16 +76,18 @@ async def test_kv_multiple_types_persist(worker, grctl_client) -> None:
         struct_result = await ctx.store.get("struct_key", StructKVPayload)
         assert isinstance(pydantic_result, PydanticKVPayload)
         assert isinstance(struct_result, StructKVPayload)
-        return ctx.next.complete({
-            "str": str_val,
-            "int": int_val,
-            "float": float_val,
-            "bool": bool_val,
-            "list": list_val,
-            "dict": dict_val,
-            "pydantic": pydantic_result.model_dump(),
-            "struct": {"label": struct_result.label, "count": struct_result.count},
-        })
+        return ctx.next.complete(
+            {
+                "str": str_val,
+                "int": int_val,
+                "float": float_val,
+                "bool": bool_val,
+                "list": list_val,
+                "dict": dict_val,
+                "pydantic": pydantic_result.model_dump(),
+                "struct": {"label": struct_result.label, "count": struct_result.count},
+            }
+        )
 
     await worker([wf])
 

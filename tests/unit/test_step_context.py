@@ -452,7 +452,7 @@ class TestNextBuilderWait:
 
         builder = _make_next_builder()
 
-        directive = builder.wait(timeout=timedelta(minutes=5), on_timeout=my_step)
+        directive = builder.wait(timeout=timedelta(minutes=5), on_timeout=my_step)  # ty:ignore[invalid-argument-type]
 
         result = directive.msg
         assert isinstance(result, StepResult)
@@ -464,12 +464,12 @@ class TestNextBuilderWait:
 
     def test_wait_timeout_without_on_timeout_raises(self) -> None:
         builder = _make_next_builder()
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError):  # noqa: PT011
             builder.wait(timeout=timedelta(seconds=10))
 
     def test_wait_on_timeout_without_timeout_raises(self) -> None:
         async def my_step(ctx: object) -> object: ...
 
         builder = _make_next_builder()
-        with pytest.raises(ValueError):
-            builder.wait(on_timeout=my_step)
+        with pytest.raises(ValueError):  # noqa: PT011
+            builder.wait(on_timeout=my_step)  # ty:ignore[invalid-argument-type]
