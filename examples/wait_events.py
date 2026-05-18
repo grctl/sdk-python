@@ -33,7 +33,7 @@ async def call_farewell_api(name: str) -> str:
 async def start(ctx: Context, name: str) -> Directive:
     ctx.store.put("name", name)
     logger.info(f"Initialized workflow for: {name}")
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 @greet_events.event()
@@ -42,7 +42,7 @@ async def greet(ctx: Context, title: str) -> Directive:
     greeting = await call_greeting_api(f"{title} {name}")
     ctx.store.put("greeting", greeting)
     ctx.store.put("message", greeting)
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 @greet_events.event()

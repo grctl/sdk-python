@@ -22,7 +22,7 @@ async def test_send_event_triggers_event_handler(worker, grctl_client) -> None:
     )
 
     try:
-        await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_kind(HistoryKind.wait_event_started)
+        await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_kind(HistoryKind.wait_started)
         await handle.send("finish", {"result": "approved"})
 
         result = await asyncio.wait_for(handle.future, timeout=30)
@@ -44,7 +44,7 @@ async def test_send_event_payload_is_received_by_handler(worker, grctl_client) -
     )
 
     try:
-        await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_kind(HistoryKind.wait_event_started)
+        await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_kind(HistoryKind.wait_started)
         await handle.send("finish", {"result": "payload-val"})
 
         result = await asyncio.wait_for(handle.future, timeout=30)
@@ -67,7 +67,7 @@ async def test_send_event_emits_event_received_in_history(worker, grctl_client) 
 
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id)
-        await history.wait_for_kind(HistoryKind.wait_event_started)
+        await history.wait_for_kind(HistoryKind.wait_started)
         await handle.send("finish")
 
         event, _ = await history.wait_for_kind(HistoryKind.event_received)

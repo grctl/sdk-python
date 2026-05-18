@@ -78,7 +78,7 @@ async def start(ctx: Context, order: OrderRequest) -> Directive:
     enriched = await enrich_order(order)
     logger.info(f"Enriched order: total={enriched.total} {enriched.currency}")
     ctx.store.put("enriched_order", enriched)
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 @orders.event()

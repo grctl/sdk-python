@@ -7,17 +7,21 @@ import pytest
 from grctl.models import (
     ChildWorkflowStarted,
     Directive,
+    DirectiveKind,
     HistoryEvent,
     HistoryKind,
     ParentEventSent,
     RandomRecorded,
     RunInfo,
     SleepRecorded,
+    Step,
+    StepResult,
     TimestampRecorded,
     UuidRecorded,
+    Wait,
 )
 from grctl.nats.connection import Connection
-from grctl.worker.context import Context
+from grctl.worker.context import Context, NextBuilder
 from grctl.worker.runtime import NonDeterminismError, StepRuntime, set_step_runtime
 from grctl.workflow import Workflow
 
@@ -412,3 +416,60 @@ class TestSequentialReplay:
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
         constructed_run_info = mock_handle_cls.call_args.kwargs["run_info"]
         assert constructed_run_info.id == original_run_id
+
+
+def _make_next_builder() -> NextBuilder:
+    current_directive = Mock(spec=Directive)
+    current_directive.kind = DirectiveKind.step
+    current_directive.msg = Mock(spec=Step)
+    store = Mock()
+    store.get_pending_updates.return_value = {}
+    return NextBuilder(
+        run=Mock(spec=RunInfo),
+        worker_id="test-worker",
+        store=store,
+        current_directive=current_directive,
+    )
+
+
+class TestNextBuilderWait:
+    def test_wait_no_args_produces_zero_timeout_and_empty_step_name(self) -> None:
+        builder = _make_next_builder()
+
+        directive = builder.wait()
+
+        assert directive.kind == DirectiveKind.step_result
+        result = directive.msg
+        assert isinstance(result, StepResult)
+        assert result.next_msg_kind == DirectiveKind.wait
+        wait_msg = result.next_msg
+        assert isinstance(wait_msg, Wait)
+        assert wait_msg.timeout_ms == 0
+        assert wait_msg.timeout_step_name == ""
+
+    def test_wait_with_timeout_and_on_timeout_encodes_correctly(self) -> None:
+        async def my_step(ctx: object) -> object: ...
+
+        builder = _make_next_builder()
+
+        directive = builder.wait(timeout=timedelta(minutes=5), on_timeout=my_step)
+
+        result = directive.msg
+        assert isinstance(result, StepResult)
+        assert result.next_msg_kind == DirectiveKind.wait
+        wait_msg = result.next_msg
+        assert isinstance(wait_msg, Wait)
+        assert wait_msg.timeout_ms == 5 * 60 * 1000
+        assert wait_msg.timeout_step_name == "my_step"
+
+    def test_wait_timeout_without_on_timeout_raises(self) -> None:
+        builder = _make_next_builder()
+        with pytest.raises(ValueError):
+            builder.wait(timeout=timedelta(seconds=10))
+
+    def test_wait_on_timeout_without_timeout_raises(self) -> None:
+        async def my_step(ctx: object) -> object: ...
+
+        builder = _make_next_builder()
+        with pytest.raises(ValueError):
+            builder.wait(on_timeout=my_step)

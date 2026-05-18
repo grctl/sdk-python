@@ -23,7 +23,7 @@ async def incr(c: int) -> int:
 @lte.start()
 async def start(ctx: Context, start_count: int) -> Directive:
     ctx.store.put("c", start_count)
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 @lte.event()
@@ -37,7 +37,7 @@ async def incr_step(ctx: Context) -> Directive:
     if c >= 1000:  # noqa: PLR2004
         return ctx.next.complete(c)
 
-    return ctx.next.wait_for_event()
+    return ctx.next.wait()
 
 
 async def main() -> None:

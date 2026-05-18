@@ -69,7 +69,7 @@ async def test_get_workflow_handle_cross_process() -> None:
             timeout=timedelta(seconds=30),
         )
 
-        # Wait for the workflow to reach its first wait_for_event state.
+        # Wait for the workflow to reach its first wait state.
         await asyncio.sleep(1)
 
         # --- Process 2: independent connection, no knowledge of the original handle ---

@@ -105,7 +105,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="child_done")
         async def on_child_done(ctx: Context) -> Directive:
@@ -145,7 +145,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:
@@ -184,7 +184,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
-            return ctx.next.wait_for_event(timeout=timedelta(seconds=30))
+            return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:

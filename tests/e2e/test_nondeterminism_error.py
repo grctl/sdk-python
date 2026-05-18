@@ -172,7 +172,7 @@ def _build_send_parent_workflow() -> Workflow:
     async def start(ctx: Context) -> Directive:
         child_workflow_id = f"{ctx.run.wf_id}-child"
         await ctx.start(_NDET_SEND_CHILD_WORKFLOW_TYPE, child_workflow_id)
-        return ctx.next.wait_for_event(timeout=timedelta(seconds=5), timeout_step_name="parent_timeout")
+        return ctx.next.wait(timeout=timedelta(seconds=5), on_timeout=parent_timeout)
 
     @parent.event(name="status_v1")
     async def on_status_v1(ctx: Context) -> Directive:

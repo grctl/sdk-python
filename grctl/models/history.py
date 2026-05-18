@@ -15,8 +15,8 @@ class HistoryKind(StrEnum):
     run_cancel_scheduled = "run.cancel_scheduled"
     run_cancelled = "run.cancelled"
     run_timeout = "run.timeout"
-    wait_event_started = "wait_event.started"
-    wait_event_timed_out = "wait_event.timed_out"
+    wait_started = "wait.started"
+    wait_timed_out = "wait.timed_out"
     event_received = "event.received"
     step_started = "step.started"
     step_completed = "step.completed"
@@ -111,14 +111,19 @@ class StepTimeout(msgspec.Struct):
     duration_ms: int
 
 
-class WaitEventStarted(msgspec.Struct):
-    """Wait for event started."""
+class WaitStarted(msgspec.Struct):
+    """Run entered Wait state."""
+
+    directive_id: str = ""
+    timeout_ms: int = 0
+    timeout_step_name: str = ""
 
 
-class WaitEventTimedOut(msgspec.Struct):
-    """Wait for event timed out; timeout step dispatched."""
+class WaitTimedOut(msgspec.Struct):
+    """Wait timer expired; timeout step dispatched."""
 
-    timeout_step_name: str
+    original_directive_id: str = ""
+    timeout_step_name: str = ""
 
 
 class EventReceived(msgspec.Struct):
@@ -222,7 +227,7 @@ class ParentEventSent(msgspec.Struct):
 
 
 RunEvents = RunCancelScheduled | RunCancelled | RunCompleted | RunFailed | RunScheduled | RunStarted | RunTimeout
-WaitEvents = WaitEventStarted | WaitEventTimedOut | EventReceived
+WaitEvents = WaitStarted | WaitTimedOut | EventReceived
 StepEvents = StepStarted | StepCompleted | StepFailed | StepCancelled | StepTimeout
 TaskEvents = TaskStarted | TaskCompleted | TaskFailed | TaskAttemptFailed | TaskCancelled
 DeterministicEvents = TimestampRecorded | RandomRecorded | UuidRecorded | SleepRecorded
@@ -239,8 +244,8 @@ HistoryEvents = (
     | StepFailed
     | StepCancelled
     | StepTimeout
-    | WaitEventStarted
-    | WaitEventTimedOut
+    | WaitStarted
+    | WaitTimedOut
     | EventReceived
     | TaskStarted
     | TaskCompleted
@@ -277,8 +282,8 @@ history_factories: dict[str, type] = {
     "run.cancel_scheduled": RunCancelScheduled,
     "run.cancelled": RunCancelled,
     "run.timeout": RunTimeout,
-    "wait_event.started": WaitEventStarted,
-    "wait_event.timed_out": WaitEventTimedOut,
+    "wait.started": WaitStarted,
+    "wait.timed_out": WaitTimedOut,
     "event.received": EventReceived,
     "step.started": StepStarted,
     "step.completed": StepCompleted,
