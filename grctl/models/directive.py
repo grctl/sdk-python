@@ -73,6 +73,13 @@ class Fail(msgspec.Struct):
     error: ErrorDetails
 
 
+class FailStep(msgspec.Struct):
+    """Worker directive to mark a step as failed and fail the run."""
+
+    step_name: str
+    error: ErrorDetails
+
+
 class DirectiveKind(StrEnum):
     start = "start"
     cancel = "cancel"
@@ -84,6 +91,7 @@ class DirectiveKind(StrEnum):
     wait = "wait"
     wait_timeout = "wait_timeout"
     step_result = "step_result"
+    fail_step = "fail_step"
 
 
 class StepResult(msgspec.Struct):

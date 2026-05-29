@@ -60,7 +60,7 @@ async def main() -> None:
             input={"start_count": 0},
             timeout=timedelta(seconds=30),
         )
-        for _ in range(100):
+        for _ in range(1000):
             await wf_handle.send("incr_step")
 
         result = await asyncio.wait_for(wf_handle.future, timeout=120)

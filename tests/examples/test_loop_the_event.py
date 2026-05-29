@@ -33,11 +33,11 @@ async def test_wait_events_example_end_to_end() -> None:
         wf_handle = await client.start_workflow(
             type=lte.workflow_type,
             id=workflow_id,
-            input={"start_count": 900},
+            input={"start_count": 0},
             timeout=timedelta(seconds=300),
         )
 
-        for _ in range(10):
+        for _ in range(100):
             await wf_handle.send("incr_step")
 
         result = await asyncio.wait_for(wf_handle.future, timeout=30)

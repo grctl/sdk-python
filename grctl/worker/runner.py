@@ -34,8 +34,9 @@ def workflow_error_handler(func):  # noqa: ANN001, ANN201
             logger.exception(f"Workflow execution failed in {func.__name__}")
 
             ctx = self.runtime.get_step_context()
-            fail_directive = ctx.next.fail(
-                ErrorDetails(
+            fail_directive = ctx.next.fail_step(
+                step_name=self.runtime.step_name,
+                error=ErrorDetails(
                     type=type(e).__name__,
                     message=str(e),
                     stack_trace=stack_trace,
