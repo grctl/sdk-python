@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.2.0...grctl-sdk-python-v0.2.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* fail step ([#20](https://github.com/grctl/sdk-python/issues/20)) ([a9a081d](https://github.com/grctl/sdk-python/commit/a9a081db43edca50669891d32a74aef214b48693))
+
 ## [0.2.0](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.1.4...grctl-sdk-python-v0.2.0) (2026-05-18)
 
 
