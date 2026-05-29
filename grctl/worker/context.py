@@ -18,6 +18,7 @@ from grctl.models import (
     ErrorDetails,
     EventCmd,
     Fail,
+    FailStep,
     HistoryKind,
     ParentEventSent,
     RandomRecorded,
@@ -117,6 +118,27 @@ class NextBuilder:
 
         return Directive(
             id=str(ULID()), kind=DirectiveKind.step_result, run_info=self._run, timestamp=datetime.now(UTC), msg=res
+        )
+
+    def fail_step(self, step_name: str, error: ErrorDetails) -> Directive:
+        res = StepResult(
+            processed_msg_kind=self._current_directive.kind,
+            processed_msg=self._current_directive.msg,
+            worker_id=self._worker_id,
+            kv_updates=self._store.get_pending_updates() or {},
+            next_msg_kind=DirectiveKind.fail_step,
+            next_msg=FailStep(
+                step_name=step_name,
+                error=error,
+            ),
+        )
+
+        return Directive(
+            id=str(ULID()),
+            kind=DirectiveKind.step_result,
+            run_info=self._run,
+            timestamp=datetime.now(UTC),
+            msg=res,
         )
 
     def fail(self, error: ErrorDetails) -> Directive:
