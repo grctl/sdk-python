@@ -72,6 +72,18 @@ class WorkflowFuture(asyncio.Future[Any]):
         if not self.done():
             self.cancel()
 
+    async def discard(self) -> None:
+        """Release a future started in a step that ended without awaiting it.
+
+        Stops the history subscription and, if the run already settled, retrieves the
+        outcome so asyncio does not warn that the exception was never retrieved. Used
+        for child handles that the parent observes via a completion callback instead of
+        the future.
+        """
+        await self.stop()
+        if self.done() and not self.cancelled():
+            self.exception()  # mark retrieved; value is intentionally ignored
+
     def _handle_history_event(self, event: HistoryEvent) -> None:
         """Process a history event from the subscription."""
         try:

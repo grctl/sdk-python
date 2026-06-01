@@ -184,6 +184,10 @@ class Context:
         self._next_builder = NextBuilder(run_info, worker_id, store, directive, step_configs)
         self._parent_run = parent_run
         self._workflow_logger = workflow_logger
+        # Child handles started during this step. They are single-step-scoped: cross-step
+        # coordination uses events/callbacks, not in-memory futures, so any handle still
+        # open when the step returns is abandoned and gets discarded.
+        self._started_handles: list[WorkflowHandle] = []
 
     @property
     def store(self) -> Store:
@@ -240,7 +244,31 @@ class Context:
         workflow_input: dict[str, Any] | None = None,
         workflow_timeout: timedelta | None = None,
     ) -> WorkflowHandle:
-        """Start a child workflow and return its handle."""
+        """Start a child workflow and return its handle.
+
+        Fire-and-forget: the parent is responsible for observing the child (e.g. via
+        send_to_parent events). Use start_child to have the server trigger a parent step
+        automatically when the child reaches a terminal state.
+        """
+        return await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
+
+    async def start_child(
+        self,
+        workflow_type: str,
+        workflow_id: str,
+        workflow_input: dict[str, Any] | None = None,
+        workflow_timeout: timedelta | None = None,
+        on_completed_step: StepHandler | None = None,
+    ) -> WorkflowHandle:
+        """Start a child workflow and return its handle.
+
+        When on_completed_step is given, the server triggers that parent step once the
+        child reaches any terminal state, passing a ChildOutcome describing the result
+        (on success) or the error (on failure/cancellation). The parent typically parks
+        with ctx.next.wait() so the callback can wake it.
+        """
+        callback_step_name = self._callback_step_name(on_completed_step)
+
         runtime = get_step_runtime()
         operation_id = runtime.generate_operation_id(
             "start",
@@ -263,6 +291,7 @@ class Context:
             parent_wf_id=self.run.wf_id,
             parent_wf_type=self.run.wf_type,
             parent_run_id=self.run.id,
+            parent_callback_step=callback_step_name,
             created_at=datetime.now(UTC),
         )
         handle = WorkflowHandle(
@@ -270,6 +299,7 @@ class Context:
             payload=workflow_input,
             connection=runtime.connection,
         )
+        self._started_handles.append(handle)
 
         if future is None:
             await handle.start()
@@ -279,6 +309,26 @@ class Context:
                 operation_id,
             )
         return handle
+
+    async def discard_started_handles(self) -> None:
+        """Silently release child handles started during this step but not awaited.
+
+        Called by the runner once the step returns its directive, on both the success
+        and failure paths. Stops each handle's history subscription and swallows any
+        pending child outcome so an unawaited future does not warn or leak a subscription.
+        """
+        for handle in self._started_handles:
+            await handle.future.discard()
+        self._started_handles.clear()
+
+    @staticmethod
+    def _callback_step_name(on_completed_step: StepHandler | None) -> str | None:
+        if on_completed_step is None:
+            return None
+        step_name = getattr(on_completed_step, "__name__", None)
+        if not step_name:
+            raise ValueError("on_completed_step must be a named handler function.")
+        return step_name
 
     async def now(self) -> datetime:
         runtime = get_step_runtime()
