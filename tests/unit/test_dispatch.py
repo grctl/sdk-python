@@ -20,7 +20,9 @@ def runner():
     rt = MagicMock()
     rt.codec = CodecRegistry()
     rt.step_history = [MagicMock()]  # non-empty skips _publish_step_started_event
-    rt.get_step_context.return_value = MagicMock()
+    ctx = MagicMock()
+    ctx.discard_started_handles = AsyncMock()
+    rt.get_step_context.return_value = ctx
     r = WorkflowRunner(rt)
     yield r
     _step_run_time.reset(r._runtime_token)

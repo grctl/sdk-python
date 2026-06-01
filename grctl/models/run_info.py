@@ -42,6 +42,9 @@ class RunInfo(msgspec.Struct, dict=True, omit_defaults=True):
     parent_wf_id: str | None = None
     parent_wf_type: str | None = None
     parent_run_id: str | None = None
+    # Name of the parent step to trigger when this run reaches a terminal state.
+    # Set only for child runs started with a completion callback.
+    parent_callback_step: str | None = None
 
     # Timing fields
     timeout: int | None = None

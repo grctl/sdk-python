@@ -1,7 +1,10 @@
 import functools
 import traceback
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from grctl.worker.context import Context
 
 from grctl.logging_config import get_logger
 from grctl.models import (
@@ -91,13 +94,22 @@ class WorkflowRunner:
 
     @workflow_error_handler
     async def handle_event(self, event_name: str, payload: Any | None) -> None:
-        handler_config = self.workflow._on_event_handlers.get(event_name)  # noqa: SLF001
+        handler_config = self._resolve_event_handler(event_name)
         if handler_config is None:
             logger.warning(f"No handler registered for event '{event_name}'")
             return
 
         self.runtime.step_name = event_name
         await self._execute_step(handler_config, payload)
+
+    def _resolve_event_handler(self, event_name: str) -> HandlerConfig | None:
+        # Inbound events resolve to an event handler by name. A child-completion callback
+        # is delivered the same way but names a step handler (on_completed_step), so fall
+        # back to step handlers. Event handlers take precedence to preserve existing behavior.
+        handler_config = self.workflow._on_event_handlers.get(event_name)  # noqa: SLF001
+        if handler_config is not None:
+            return handler_config
+        return self.workflow._step_handlers.get(event_name)  # noqa: SLF001
 
     @workflow_error_handler
     async def handle_step(self, step: Step) -> None:
@@ -121,32 +133,36 @@ class WorkflowRunner:
 
         await self._publish_step_started_event()
 
+        try:
+            directive = await self._invoke_handler(ctx, handler_config, payload)
+            await self._publish_next_directive(directive, start_time)
+        finally:
+            # Always release child handles started in this step, even when the handler
+            # raised, so an unawaited future never warns or leaks its subscription.
+            await ctx.discard_started_handles()
+
+    async def _invoke_handler(self, ctx: "Context", handler_config: HandlerConfig, payload: Any | None) -> Directive:
         spec = handler_config.spec
         handler = handler_config.handler
         if not spec.params or payload is None:
-            directive = await handler(ctx)
+            return await handler(ctx)
 
         # Single param: if payload is already keyed by param name use the value,
         # otherwise treat payload itself as the value (e.g. bare Pydantic model).
-        elif len(spec.params) == 1:
+        if len(spec.params) == 1:
             name, param_type = next(iter(spec.params.items()))
             raw = payload[name] if isinstance(payload, dict) and name in payload else payload
             typed_value = self.runtime.codec.from_primitive(raw, param_type)
-            directive = await handler(ctx, **{name: typed_value})
+            return await handler(ctx, **{name: typed_value})
 
         # Multi param: convert each param from the payload dict and pass as kwargs
-        else:
-            if not isinstance(payload, dict):
-                raise TypeError(
-                    f"Handler expects params {list(spec.params)} but payload is not a dict: {type(payload)}"
-                )
-            typed_kwargs = {
-                name: self.runtime.codec.from_primitive(payload[name], param_type)
-                for name, param_type in spec.params.items()
-            }
-            directive = await handler(ctx, **typed_kwargs)
-
-        await self._publish_next_directive(directive, start_time)
+        if not isinstance(payload, dict):
+            raise TypeError(f"Handler expects params {list(spec.params)} but payload is not a dict: {type(payload)}")
+        typed_kwargs = {
+            name: self.runtime.codec.from_primitive(payload[name], param_type)
+            for name, param_type in spec.params.items()
+        }
+        return await handler(ctx, **typed_kwargs)
 
     async def _publish_step_started_event(self) -> None:
         if self.runtime.step_history is None or len(self.runtime.step_history) == 0:
