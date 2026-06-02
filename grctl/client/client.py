@@ -4,6 +4,8 @@ Provides a simple interface for interacting with workflows.
 """
 
 import logging
+import secrets
+import socket
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar, overload
 
@@ -32,6 +34,7 @@ class Client:
     def __init__(self, connection: Connection, codec: CodecRegistry | None = None) -> None:
         self._connection = connection
         self._codec = codec or CodecRegistry()
+        self.id = f"c_{secrets.token_hex(4)}@{socket.gethostname()}"
 
     async def describe(self, wf_id: str) -> RunInfo:
         """Describe the latest run for a workflow ID."""
@@ -40,6 +43,7 @@ class Client:
             kind=CmdKind.run_describe,
             timestamp=datetime.now(UTC),
             msg=DescribeCmd(wf_id=wf_id),
+            sender_id=self.id,
         )
         # Use a routing-only RunInfo — publish_cmd only needs wf_id for subject routing.
         routing_info = RunInfo(id="", wf_type="", wf_id=wf_id)
@@ -103,6 +107,7 @@ class Client:
             payload=None,
             connection=self._connection,
             codec=self._codec,
+            sender_id=self.id,
         )
         await handle.attach()
         return handle
@@ -145,6 +150,7 @@ class Client:
             connection=self._connection,
             codec=self._codec,
             return_type=return_type,
+            sender_id=self.id,
         )
 
         # Start the workflow future (subscribe to events and publish run command)

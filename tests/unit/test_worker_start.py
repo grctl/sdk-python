@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import AbstractContextManager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6,6 +7,7 @@ from nats.js.api import ConsumerConfig
 
 from grctl.nats.connection import Connection
 from grctl.nats.subscriber import Subscriber
+from grctl.worker.errors import RegistrationError
 from grctl.worker.worker import Worker
 from grctl.workflow.workflow import Workflow
 
@@ -16,11 +18,17 @@ def _make_workflow(workflow_type: str) -> Workflow:
     return wf
 
 
+def _patch_registration() -> AbstractContextManager[AsyncMock]:
+    """Patch the registration sync so start() tests focus on subscription wiring."""
+    return patch("grctl.worker.worker.register_workflow_types", new_callable=AsyncMock)
+
+
 def _make_connection() -> AsyncMock:
     connection = AsyncMock(spec=Connection)
     connection.js = AsyncMock()
     connection.manifest = MagicMock()
     connection.publisher = AsyncMock()
+    connection.nc = AsyncMock()
     return connection
 
 
@@ -32,7 +40,10 @@ async def test_subscribe_called_with_wf_types() -> None:
 
     mock_subscriber = AsyncMock()
 
-    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber) as mock_subscriber_cls:
+    with (
+        patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber) as mock_subscriber_cls,
+        _patch_registration(),
+    ):
         worker._stop_event.set()
         await worker.start()
 
@@ -74,7 +85,7 @@ async def test_wait_until_ready_returns_after_startup() -> None:
 
     mock_subscriber = AsyncMock()
 
-    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber):
+    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber), _patch_registration():
         start_task = asyncio.create_task(worker.start())
         await worker.wait_until_ready()
         await worker.stop()
@@ -91,7 +102,7 @@ async def test_wait_until_ready_propagates_startup_failure() -> None:
     mock_subscriber = AsyncMock()
     mock_subscriber.start.side_effect = startup_error
 
-    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber):
+    with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber), _patch_registration():
         start_task = asyncio.create_task(worker.start())
 
         with pytest.raises(RuntimeError, match="boom"):
@@ -99,3 +110,24 @@ async def test_wait_until_ready_propagates_startup_failure() -> None:
 
         with pytest.raises(RuntimeError, match="boom"):
             await start_task
+
+
+@pytest.mark.asyncio
+async def test_registration_failure_aborts_before_subscribing() -> None:
+    wf = _make_workflow("wf_type_a")
+    connection = _make_connection()
+    worker = Worker(workflows=[wf], connection=connection)
+
+    with (
+        patch("grctl.worker.worker.Subscriber") as mock_subscriber_cls,
+        patch(
+            "grctl.worker.worker.register_workflow_types",
+            new_callable=AsyncMock,
+            side_effect=RegistrationError("registration exhausted"),
+        ),
+        pytest.raises(RegistrationError, match="registration exhausted"),
+    ):
+        await worker.start()
+
+    # Fail-fast: the worker must not subscribe to task subjects when it cannot register.
+    mock_subscriber_cls.assert_not_called()

@@ -18,11 +18,12 @@ _T = TypeVar("_T")
 
 
 class WorkflowHandle:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         run_info: RunInfo,
         payload: Any | None,
         connection: "Connection",
+        sender_id: str,
         codec: CodecRegistry | None = None,
         return_type: type | None = None,
     ) -> None:
@@ -31,6 +32,7 @@ class WorkflowHandle:
         self._connection = connection
         self._codec = codec or CodecRegistry()
         self._return_type = return_type
+        self._sender_id = sender_id
         self.future = WorkflowFuture(run_info, connection.nc, payload)
 
     async def attach(self) -> None:
@@ -49,6 +51,7 @@ class WorkflowHandle:
                 run_info=self.run_info,
                 input=input_value,
             ),
+            sender_id=self._sender_id,
         )
         logger.debug("Starting workflow history listener")
         await self.future.start()
@@ -66,6 +69,7 @@ class WorkflowHandle:
                 event_name=event_name,
                 payload=normalized,
             ),
+            sender_id=self._sender_id,
         )
         logger.debug("Publishing event command for workflow %s", cmd)
         await self._connection.publisher.publish_cmd(self.run_info, cmd)
@@ -104,6 +108,7 @@ class WorkflowHandle:
                 wf_id=self.run_info.wf_id,
                 reason=reason,
             ),
+            sender_id=self._sender_id,
         )
         await self._connection.publisher.publish_cmd(self.run_info, cmd)
 

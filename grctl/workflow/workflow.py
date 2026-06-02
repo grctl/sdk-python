@@ -104,6 +104,28 @@ class Workflow:
             raise ValueError(msg)
         return self._type
 
+    @property
+    def start_step_name(self) -> str | None:
+        """Handler name of the start step, or None if no start handler is registered."""
+        if self._start_handler is None:
+            return None
+        return self._start_handler.handler.__name__  # ty:ignore[unresolved-attribute]
+
+    @property
+    def step_names(self) -> list[str]:
+        """Names of all registered step handlers."""
+        return list(self._step_handlers.keys())
+
+    @property
+    def event_names(self) -> list[str]:
+        """Names of all registered event handlers."""
+        return list(self._on_event_handlers.keys())
+
+    @property
+    def query_names(self) -> list[str]:
+        """Names of all registered query handlers."""
+        return list(self._query_handlers.keys())
+
     def start(self) -> Callable[[_HandlerF], _HandlerF]:
         """Decorate the workflow start handler.
 
@@ -119,9 +141,9 @@ class Workflow:
 
         Example:
             @workflow.start()
-            async def start(ctx: RunContext, order_id: str) -> None:
-                ctx.state.order_id = order_id
-                ctx.state.items = []
+            async def start(ctx: RunContext, order_id: str) -> Directive:
+                ctx.store.put("order_id", order_id)
+                return ctx.next.complete()
 
         """
 
@@ -158,8 +180,8 @@ class Workflow:
 
         Example:
             @workflow.step()
-            async def my_step_name(ctx: RunContext, name: str) -> str:
-                return f"Hello {name}"
+            async def my_step_name(ctx: RunContext, name: str) -> Directive:
+                return ctx.next.complete(f"Hello {name}")
 
         """
 
@@ -201,13 +223,12 @@ class Workflow:
 
         Example:
             @workflow.event()
-            async def approve(ctx: RunContext) -> None:
-                # Mutate state
-                pass
+            async def approve(ctx: RunContext) -> Directive:
+                return ctx.next.complete()
 
             @workflow.event(name="custom_event")
-            async def my_handler(ctx: RunContext, data: str) -> None:
-                logger.info(f"Event data: {data}")
+            async def my_handler(ctx: RunContext, data: str) -> Directive:
+                return ctx.next.complete()
 
         """
 

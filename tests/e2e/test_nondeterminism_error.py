@@ -390,6 +390,7 @@ async def test_send_to_parent_input_change_raises_nondeterminism() -> None:
             ),
             payload=None,
             connection=connection,
+            sender_id="c_test@localhost",
         )
         await child_handle.future.start()
 

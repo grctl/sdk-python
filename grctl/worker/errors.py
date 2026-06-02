@@ -5,6 +5,14 @@ class WorkflowNotRegisteredError(Exception):
         super().__init__(f"Workflow type '{workflow_type}' is not registered with the worker.")
 
 
+class RegistrationError(Exception):
+    """Raised when a worker cannot sync its workflow type catalog to the server.
+
+    A worker that fails to register must not begin processing work, so this
+    error propagates out of Worker.start() to fail the process fast.
+    """
+
+
 class WorkflowRunnerNotFoundError(Exception):
     """Exception raised when a WorkflowRunner is not found for a given workflow run ID."""
 

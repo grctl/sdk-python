@@ -11,7 +11,9 @@ from grctl.models.command import (
     Command,
     DescribeCmd,
     EventCmd,
+    RegisterCmd,
     StartCmd,
+    WorkflowTypeDef,
     command_decoder,
     command_encoder,
 )
@@ -79,6 +81,8 @@ __all__ = [  # noqa: RUF022
     "CancelCmd",
     "DescribeCmd",
     "EventCmd",
+    "RegisterCmd",
+    "WorkflowTypeDef",
     "CmdKind",
     "command_decoder",
     "command_encoder",
