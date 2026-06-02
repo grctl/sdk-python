@@ -219,6 +219,7 @@ class Context:
                 id=str(ULID()),
                 kind=CmdKind.run_event,
                 timestamp=datetime.now(UTC),
+                sender_id=self._worker_id,
                 msg=EventCmd(
                     wf_id=self._parent_run.wf_id,
                     event_name=event_name,
@@ -298,6 +299,7 @@ class Context:
             run_info=run_info,
             payload=workflow_input,
             connection=runtime.connection,
+            sender_id=self._worker_id,
         )
         self._started_handles.append(handle)
 

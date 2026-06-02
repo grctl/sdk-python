@@ -13,6 +13,7 @@ class CmdKind(StrEnum):
     run_describe = "run.describe"
     run_terminate = "run.terminate"
     run_event = "run.event"
+    worker_register = "worker.register"
 
 
 class StartCmd(msgspec.Struct):
@@ -50,7 +51,27 @@ class TerminateCmd(msgspec.Struct):
     reason: str | None
 
 
-type CommandMessage = StartCmd | EventCmd | CancelCmd | DescribeCmd | TerminateCmd
+class WorkflowTypeDef(msgspec.Struct):
+    """Structural definition of one workflow type reported at registration.
+
+    Field names and order mirror the Go WorkflowTypeDef msgpack tags.
+    """
+
+    type: str
+    start_step: str
+    steps: list[str]
+    events: list[str]
+    queries: list[str]
+
+
+class RegisterCmd(msgspec.Struct):
+    """Worker startup sync of its workflow type catalog to the server."""
+
+    worker_id: str
+    types: list[WorkflowTypeDef]
+
+
+type CommandMessage = StartCmd | EventCmd | CancelCmd | DescribeCmd | TerminateCmd | RegisterCmd
 
 
 class Command(msgspec.Struct):
@@ -58,6 +79,7 @@ class Command(msgspec.Struct):
     kind: CmdKind
     timestamp: datetime
     msg: CommandMessage
+    sender_id: str = ""
 
 
 # Factory map for kind-based deserialization
@@ -67,6 +89,7 @@ command_factories: dict[str, type] = {
     "run.describe": DescribeCmd,
     "run.terminate": TerminateCmd,
     "run.event": EventCmd,
+    "worker.register": RegisterCmd,
 }
 
 
@@ -80,12 +103,16 @@ class CommandWire(msgspec.Struct):
     k: CmdKind
     m: bytes
     t: datetime
+    s: str = ""
+
 
 
 def command_encoder(cmd: Command) -> bytes:
     """Encode command to msgpack with compact wire format."""
     if cmd.msg is None:
         raise ValueError("Command message cannot be None")
+    if cmd.sender_id == "":
+        raise ValueError("Command sender ID cannot be empty")
 
     msg_bytes = msgspec.msgpack.encode(cmd.msg)
 
@@ -94,6 +121,7 @@ def command_encoder(cmd: Command) -> bytes:
         k=cmd.kind,
         m=msg_bytes,
         t=cmd.timestamp,
+        s=cmd.sender_id,
     )
 
     return msgspec.msgpack.encode(wire)
@@ -114,4 +142,5 @@ def command_decoder(data: bytes) -> Command:
         kind=wire.k,
         msg=msg,  # ty:ignore[invalid-argument-type]
         timestamp=wire.t,
+        sender_id=wire.s,
     )

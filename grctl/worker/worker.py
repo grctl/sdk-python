@@ -11,9 +11,15 @@ import secrets
 import socket
 from functools import cached_property
 
+import msgspec
+from nats.aio.msg import Msg
+
 from grctl.logging_config import get_logger
+from grctl.models.api import GrctlAPIResponse
+from grctl.models.command import Command, command_decoder
 from grctl.nats.connection import Connection
 from grctl.nats.subscriber import Subscriber
+from grctl.worker.registration import build_catalog, register_workflow_types
 from grctl.worker.run_manager import RunManager
 from grctl.workflow.workflow import Workflow
 
@@ -59,6 +65,7 @@ class Worker:
         self._subscriber: Subscriber | None = None
         self._run_manager: RunManager | None = None
         self._startup_error: Exception | None = None
+        self._cmd_sub = None
 
     @cached_property
     def worker_name(self) -> str:
@@ -74,10 +81,10 @@ class Worker:
 
     @cached_property
     def worker_id(self) -> str:
-        """Unique per-process identifier combining stable name hash, random suffix, and hostname."""
+        """Unique per-instance identifier combining stable name hash, random suffix, and hostname."""
         random_chars = secrets.token_hex(1)
         hostname = socket.gethostname()
-        return f"{self.worker_name}.{random_chars}@{hostname}"
+        return f"w_{self.worker_name}.{random_chars}@{hostname}"
 
     async def start(self) -> None:
         """Start the worker and begin processing messages.
@@ -100,6 +107,11 @@ class Worker:
                 workflow_logger=self._workflow_logger,
             )
 
+            # Register workflow types with the server before claiming any work.
+            # A failure here raises and aborts startup — fail fast, loud.
+            catalog = build_catalog(self._workflows)
+            await register_workflow_types(self._connection, self.worker_id, catalog)
+
             wf_types = [wf.workflow_type for wf in self._workflows]
             self._subscriber = Subscriber(
                 js=self._connection.js,
@@ -108,6 +120,11 @@ class Worker:
                 run_manager=self._run_manager,
             )
             await self._subscriber.start()
+
+            cmd_subject = self._connection.manifest.worker_cmd_subject(self.worker_id)
+            self._cmd_sub = await self._connection.nc.subscribe(cmd_subject, cb=self._on_command)
+            logger.debug("Subscribed to worker command channel: %s", cmd_subject)
+
             self._startup_event.set()
 
             logger.info(f"Worker {self.worker_name} ({self.worker_id}) started and ready to process messages")
@@ -126,6 +143,25 @@ class Worker:
             raise self._startup_error
         if self._subscriber is None:
             raise RuntimeError("Worker startup completed without creating a subscriber")
+
+    async def _on_command(self, msg: Msg) -> None:
+        """Handle an inbound worker command: decode, ACK, dispatch."""
+        ack_payload = msgspec.msgpack.encode(GrctlAPIResponse(success=True))
+        try:
+            cmd = command_decoder(msg.data)
+        except Exception:
+            logger.exception("Failed to decode worker command — ACKing to unblock server")
+            await msg.respond(ack_payload)
+            return
+
+        await msg.respond(ack_payload)
+        self._dispatch_command(cmd)
+
+    def _dispatch_command(self, cmd: Command) -> None:
+        """Route a decoded command to the appropriate handler."""
+        match cmd.kind:
+            case _:
+                logger.warning("Unknown worker command kind: %s", cmd.kind)
 
     async def _process_messages(self) -> None:
         """Keep worker alive to process commands."""
@@ -146,6 +182,10 @@ class Worker:
         logger.info("Stopping worker - initiating graceful shutdown...")
 
         # 1. Stop accepting new messages
+        if self._cmd_sub is not None:
+            await self._cmd_sub.unsubscribe()
+            self._cmd_sub = None
+
         if self._subscriber is not None:
             logger.info("Stopping subscriber (no new messages will be accepted)")
             await self._subscriber.stop()

@@ -142,6 +142,13 @@ class NatsManifest:
     def api_listener_pattern(self) -> str:
         return self._subject_pattern("api", "listen")
 
+    def worker_command_subject(self) -> str:
+        return self._subject_pattern("api", "worker")
+
+    def worker_cmd_subject(self, worker_id: str) -> str:
+        pattern = self._subject_pattern("worker_cmd", "publish")
+        return self._substitute_params(pattern, worker_id=worker_id)
+
     def worker_task_filter_subject(self, wf_type: str) -> str:
         pattern = self._subject_pattern("worker_task", "filter")
         return self._substitute_params(pattern, wf_type=wf_type)

@@ -85,6 +85,7 @@ subjects:
     subject_patterns:
       publish: grctl_api.workflow.{wf_id} # Server
       listen: grctl_api.> # Server
+      worker: grctl_api.worker # Worker -> Server commands
 
   worker_task:
     stream: grctl_state
@@ -93,3 +94,10 @@ subjects:
       listen: grctl_worker_task.>
       queue_group: grctl_worker_{wf_type}
       filter: grctl_worker_task.{wf_type}.>
+
+  worker_cmd:
+    # Server -> Worker out-of-band signals. Core NATS request-reply, no stream.
+    stream: null
+    subject_patterns:
+      publish: grctl_worker_cmd.{worker_id}
+      listen: grctl_worker_cmd.{worker_id}
