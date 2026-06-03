@@ -1,5 +1,6 @@
 import functools
 import traceback
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -9,12 +10,12 @@ if TYPE_CHECKING:
 from grctl.logging_config import get_logger
 from grctl.models import (
     Directive,
+    DirectiveKind,
     ErrorDetails,
     Event,
-    HistoryKind,
     Start,
     Step,
-    StepStarted,
+    StepPickedUp,
 )
 from grctl.models.directive import StepResult
 from grctl.models.run_info_helper import RunInfoManager
@@ -131,7 +132,7 @@ class WorkflowRunner:
         ctx = self.runtime.get_step_context()
         start_time = datetime.now(UTC)
 
-        await self._publish_step_started_event()
+        await self._publish_step_picked_up()
 
         try:
             directive = await self._invoke_handler(ctx, handler_config, payload)
@@ -164,12 +165,22 @@ class WorkflowRunner:
         }
         return await handler(ctx, **typed_kwargs)
 
-    async def _publish_step_started_event(self) -> None:
+    async def _publish_step_picked_up(self) -> None:
         if self.runtime.step_history is None or len(self.runtime.step_history) == 0:
-            await self.runtime.record(
-                kind=HistoryKind.step_started,
-                payload=StepStarted(step_name=self.runtime.step_name),
-                operation_id="",
+            now = datetime.now(UTC)
+            directive = Directive(
+                id=str(uuid.uuid4()),
+                timestamp=now,
+                kind=DirectiveKind.step_picked_up,
+                run_info=self.runtime.run_info,
+                msg=StepPickedUp(
+                    step_name=self.runtime.step_name,
+                    worker_id=self.runtime.worker_id,
+                    timestamp=now,
+                ),
+            )
+            await self.runtime.publisher.publish_next_directive(
+                self.runtime.run_info, directive, enc_hook=self.runtime.codec.enc_hook
             )
 
     async def _publish_next_directive(

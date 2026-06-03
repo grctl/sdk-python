@@ -8,6 +8,7 @@ from grctl.models.command import (
     CancelCmd,
     CmdKind,
     Command,
+    WorkerTerminateRunCmd,
     command_decoder,
     command_encoder,
 )
@@ -41,3 +42,17 @@ def test_encode_empty_sender_id_raises() -> None:
     cmd = _make_cmd("")
     with pytest.raises(ValueError, match="sender"):
         command_encoder(cmd)
+
+
+def test_worker_terminate_run_cmd_round_trip() -> None:
+    cmd = Command(
+        id="01J000000000000000000002",
+        kind=CmdKind.worker_terminate_run,
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC),
+        msg=WorkerTerminateRunCmd(run_id="run-abc"),
+        sender_id="s_server@host",
+    )
+    decoded = command_decoder(command_encoder(cmd))
+    assert decoded.kind == CmdKind.worker_terminate_run
+    assert isinstance(decoded.msg, WorkerTerminateRunCmd)
+    assert decoded.msg.run_id == "run-abc"

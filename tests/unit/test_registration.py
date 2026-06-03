@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import msgspec
@@ -17,6 +17,7 @@ from grctl.nats.connection import Connection
 from grctl.worker.errors import RegistrationError
 from grctl.worker.registration import (
     REGISTRATION_MAX_ATTEMPTS,
+    _to_type_def,
     build_catalog,
     register_workflow_types,
 )
@@ -112,7 +113,7 @@ def test_register_cmd_wire_keys_match_go_tags() -> None:
     as_dict = msgspec.msgpack.decode(msgspec.msgpack.encode(msg))
 
     assert set(as_dict.keys()) == {"worker_id", "types"}
-    assert set(as_dict["types"][0].keys()) == {"type", "start_step", "steps", "events", "queries"}
+    assert set(as_dict["types"][0].keys()) == {"type", "start_step", "steps", "events", "queries", "start_step_timeout_ms"}
 
 
 def _connection_with_reply(reply_data: bytes) -> AsyncMock:
@@ -171,3 +172,27 @@ async def test_register_workflow_types_raises_after_exhaustion(monkeypatch: pyte
         await register_workflow_types(connection, "w_abc@host", build_catalog([_order_workflow()]))
 
     assert connection.nc.request.await_count == REGISTRATION_MAX_ATTEMPTS
+
+
+def test_to_type_def_with_start_timeout() -> None:
+    wf = Workflow(workflow_type="timed_wf")
+
+    @wf.start(timeout=timedelta(seconds=30))
+    async def start(ctx, x: str) -> Directive:
+        raise NotImplementedError
+
+    type_def = _to_type_def(wf)
+
+    assert type_def.start_step_timeout_ms == 30_000
+
+
+def test_to_type_def_no_start_timeout() -> None:
+    wf = Workflow(workflow_type="default_wf")
+
+    @wf.start()
+    async def start(ctx, x: str) -> Directive:
+        raise NotImplementedError
+
+    type_def = _to_type_def(wf)
+
+    assert type_def.start_step_timeout_ms == 0

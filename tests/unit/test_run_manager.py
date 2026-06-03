@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -110,3 +111,24 @@ async def test_handle_next_directive_skips_fetch_when_history_seq_id_missing(moc
     fetch_history.assert_not_awaited()
     runtime = manager._start_task.call_args.args[0].runtime  # ty:ignore[unresolved-attribute]
     assert runtime.step_history == []
+
+
+def test_terminate_run_cancels_task_and_returns_true(mock_connection) -> None:
+    connection, _ = mock_connection
+    manager = RunManager("worker-name", "worker-1", [], connection)
+    task = Mock(spec=asyncio.Task)
+    manager._runner_tasks["run-1"] = task
+
+    result = manager.terminate_run("run-1")
+
+    assert result is True
+    task.cancel.assert_called_once()
+
+
+def test_terminate_run_unknown_run_id_returns_false(mock_connection) -> None:
+    connection, _ = mock_connection
+    manager = RunManager("worker-name", "worker-1", [], connection)
+
+    result = manager.terminate_run("no-such-run")
+
+    assert result is False

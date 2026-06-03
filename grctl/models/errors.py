@@ -8,3 +8,7 @@ class WorkflowNotFoundError(WorkflowError):
 
 class WorkflowAlreadyRunningError(WorkflowError):
     """Raised when a workflow ID already has an active run."""
+
+
+class WorkflowTypeNotRegisteredError(WorkflowError):
+    """Raised when the server has no registered worker for the requested workflow type."""

@@ -7,24 +7,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from grctl.models.command import CancelCmd, CmdKind, Command
-from grctl.nats.connection import Connection
-from grctl.worker.worker import Worker
-from grctl.workflow.workflow import Workflow
+from grctl.worker.worker_cmd_subscriber import WorkerCmdSubscriber
 
 
-def _make_workflow(workflow_type: str) -> Workflow:
-    wf = MagicMock(spec=Workflow)
-    wf.workflow_type = workflow_type
-    return wf
-
-
-def _make_worker() -> Worker:
-    connection = AsyncMock(spec=Connection)
-    connection.js = AsyncMock()
-    connection.manifest = MagicMock()
-    connection.publisher = AsyncMock()
-    wf = _make_workflow("wf_type_a")
-    return Worker(workflows=[wf], connection=connection)
+def _make_subscriber() -> WorkerCmdSubscriber:
+    return WorkerCmdSubscriber(
+        nc=AsyncMock(),
+        manifest=MagicMock(),
+        worker_id="w_test.01@host",
+        run_manager=MagicMock(),
+    )
 
 
 def _make_cmd(kind: CmdKind) -> Command:
@@ -37,11 +29,13 @@ def _make_cmd(kind: CmdKind) -> Command:
     )
 
 
-def test_dispatch_unknown_kind_logs_warning_and_does_not_raise(caplog: pytest.LogCaptureFixture) -> None:
-    worker = _make_worker()
-    cmd = _make_cmd(CmdKind.run_cancel)  # no handler registered for any kind yet
+@pytest.mark.asyncio
+async def test_dispatch_unknown_kind_logs_warning_and_does_not_raise(caplog: pytest.LogCaptureFixture) -> None:
+    subscriber = _make_subscriber()
+    cmd = _make_cmd(CmdKind.run_cancel)  # no handler registered for this kind
 
-    with caplog.at_level(logging.WARNING, logger="grctl.worker.worker"):
-        worker._dispatch_command(cmd)
+    with caplog.at_level(logging.WARNING, logger="grctl.worker.worker_cmd_subscriber"):
+        result = await subscriber._dispatch_command(cmd)
 
+    assert result is False
     assert any("unknown" in record.message.lower() for record in caplog.records)

@@ -67,16 +67,13 @@ async def test_start(mock_connection):
     await manager.handle_next_directive(directive)
     await manager.shutdown()
 
-    # Find the directive message
-    directive_msg = next((msg for _, msg in published if isinstance(msg, Directive)), None)
-    assert directive_msg is not None, "Expected to find a Directive message"
-
-    # Workers always publish step_result directives back to the server
-    assert directive_msg.kind == "step_result", f"Expected kind='step_result', got {directive_msg.kind}"
-
-    # Verify the next step is complete
     from grctl.models.directive import StepResult  # noqa: PLC0415
 
+    # Find the step_result directive
+    directive_msg = next(
+        (msg for _, msg in published if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_result), None
+    )
+    assert directive_msg is not None, "Expected to find a step_result Directive message"
     assert isinstance(directive_msg.msg, StepResult)
     assert directive_msg.msg.next_msg_kind == "complete", (
         f"Expected next_msg_kind='complete', got {directive_msg.msg.next_msg_kind}"
@@ -109,15 +106,13 @@ async def test_step(mock_connection):
     await manager.handle_next_directive(directive)
     await manager.shutdown()
 
-    # Find the directive message
-    directive_msg = next((msg for _, msg in published if isinstance(msg, Directive)), None)
-    assert directive_msg is not None, "Expected to find a Directive message"
-
-    # Workers always publish step_result directives back to the server
-    assert directive_msg.kind == "step_result", f"Expected kind='step_result', got {directive_msg.kind}"
-
     from grctl.models.directive import StepResult  # noqa: PLC0415
 
+    # Find the step_result directive
+    directive_msg = next(
+        (msg for _, msg in published if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_result), None
+    )
+    assert directive_msg is not None, "Expected to find a step_result Directive message"
     assert isinstance(directive_msg.msg, StepResult)
     assert directive_msg.msg.next_msg_kind == "complete", (
         f"Expected next_msg_kind='complete', got {directive_msg.msg.next_msg_kind}"

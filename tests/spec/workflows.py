@@ -98,6 +98,20 @@ def make_blocking_step_workflow(
     return wf
 
 
+def make_blocking_start_workflow(
+    start_timeout: timedelta = timedelta(seconds=0.5),
+    prefix: str = "spec_blocking_start",
+) -> Workflow:
+    wf = Workflow(workflow_type=unique_workflow_type(prefix))
+
+    @wf.start(timeout=start_timeout)
+    async def start(ctx: Context) -> Directive:
+        await asyncio.sleep(60)
+        return ctx.next.complete("unreachable")
+
+    return wf
+
+
 # ─── Static shared workflows ──────────────────────────────────────────────────
 # Fixed workflow types kept for tests that assert on specific step/function names.
 # Prefer factories for new tests.

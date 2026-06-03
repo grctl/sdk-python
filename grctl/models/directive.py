@@ -92,6 +92,15 @@ class DirectiveKind(StrEnum):
     wait_timeout = "wait_timeout"
     step_result = "step_result"
     fail_step = "fail_step"
+    step_picked_up = "step_picked_up"
+
+
+class StepPickedUp(msgspec.Struct):
+    """Worker directive notifying the server that a step has been picked up for execution."""
+
+    step_name: str
+    worker_id: str
+    timestamp: datetime
 
 
 class StepResult(msgspec.Struct):
@@ -108,7 +117,7 @@ class StepResult(msgspec.Struct):
     duration_ms: int = 0
 
 
-DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | Wait | StepResult
+DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | Wait | StepResult | StepPickedUp
 
 
 # Factory map for kind-based deserialization
@@ -121,6 +130,7 @@ directive_factories: dict[str, type[DirectiveMessage]] = {
     "step": Step,
     "wait": Wait,
     "step_result": StepResult,
+    "step_picked_up": StepPickedUp,
 }
 
 

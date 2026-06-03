@@ -53,7 +53,9 @@ async def test_store_put_sends_kv_updates(mock_connection):
     await manager.shutdown()
 
     # Find the directive in published messages
-    directive_msg = next((msg for _, msg in published if isinstance(msg, Directive)), None)
+    directive_msg = next(
+        (msg for _, msg in published if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_result), None
+    )
     assert directive_msg is not None, "Expected to find a Directive message"
 
     from grctl.models.directive import StepResult  # noqa: PLC0415
@@ -230,7 +232,9 @@ async def test_store_put_then_get_in_same_step(mock_connection):
     await manager.shutdown()
 
     # Find the directive in published messages
-    directive_msg = next((msg for _, msg in published if isinstance(msg, Directive)), None)
+    directive_msg = next(
+        (msg for _, msg in published if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_result), None
+    )
     assert directive_msg is not None, "Expected to find a Directive message"
 
     from grctl.models.directive import StepResult  # noqa: PLC0415

@@ -126,12 +126,15 @@ class Workflow:
         """Names of all registered query handlers."""
         return list(self._query_handlers.keys())
 
-    def start(self) -> Callable[[_HandlerF], _HandlerF]:
+    def start(self, timeout: timedelta | None = None) -> Callable[[_HandlerF], _HandlerF]:
         """Decorate the workflow start handler.
 
         The start handler is called once when a workflow is first created.
         It's designed to initialize the workflow state. There can only be one start handler
         per workflow.
+
+        Args:
+            timeout: Start step timeout. Sent to the server at registration. If None, the server uses its configured default.
 
         Returns:
             Decorator function that registers the start handler.
@@ -153,7 +156,7 @@ class Workflow:
                 raise ValueError(msg)
 
             spec = inspect_handler(func)
-            self._start_handler = HandlerConfig(handler=func, spec=spec)
+            self._start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
             logger.debug(f"Registered start handler for workflow: {self._type}")
             return func
 

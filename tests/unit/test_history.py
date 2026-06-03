@@ -6,7 +6,6 @@ from grctl.models import (
     Directive,
     DirectiveKind,
     Start,
-    StepStarted,
     TaskCompleted,
     TaskStarted,
 )
@@ -70,33 +69,26 @@ async def test_history_events_published(mock_connection):
         logger.info(f"  - {type(event).__name__}: {event.kind}")
 
     # Verify we have the expected number of history events
-    # Expected: StepStarted, TaskStarted, TaskCompleted
-    # Note: RunStarted and StepCompleted are published by the server, not the worker
-    assert len(history_events) == 3, f"Expected 3 history events, got {len(history_events)}"
+    # Expected: TaskStarted, TaskCompleted
+    # Note: RunStarted, StepStarted, and StepCompleted are published by the server, not the worker
+    assert len(history_events) == 2, f"Expected 2 history events, got {len(history_events)}"
 
     # Verify event types in order
-    assert isinstance(history_events[0].msg, StepStarted), (
-        f"Expected StepStarted, got {type(history_events[0].msg).__name__}"
+    assert isinstance(history_events[0].msg, TaskStarted), (
+        f"Expected TaskStarted, got {type(history_events[0].msg).__name__}"
     )
-    assert isinstance(history_events[1].msg, TaskStarted), (
-        f"Expected TaskStarted, got {type(history_events[1].msg).__name__}"
+    assert isinstance(history_events[1].msg, TaskCompleted), (
+        f"Expected TaskCompleted, got {type(history_events[1].msg).__name__}"
     )
-    assert isinstance(history_events[2].msg, TaskCompleted), (
-        f"Expected TaskCompleted, got {type(history_events[2].msg).__name__}"
-    )
-
-    # Verify StepStarted event
-    step_started = history_events[0].msg
-    assert step_started.step_name == "start"
 
     # Verify TaskStarted event
-    task_started = history_events[1].msg
+    task_started = history_events[0].msg
     assert task_started.task_name == "call_greeting_api"
     assert task_started.step_name == "start"
     assert task_started.args == {"name": "Test User"}
 
     # Verify TaskCompleted event
-    task_completed = history_events[2].msg
+    task_completed = history_events[1].msg
     assert task_completed.task_name == "call_greeting_api"
     assert task_completed.step_name == "start"
     assert task_completed.output == {"result": "Hello, Test User!"}

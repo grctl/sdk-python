@@ -113,6 +113,32 @@ async def test_wait_until_ready_propagates_startup_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_cmd_subscriber_lifecycle() -> None:
+    wf = _make_workflow("wf_type_a")
+    connection = _make_connection()
+
+    worker = Worker(workflows=[wf], connection=connection)
+
+    mock_subscriber = AsyncMock()
+    mock_cmd_subscriber = AsyncMock()
+
+    with (
+        patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber),
+        patch("grctl.worker.worker.WorkerCmdSubscriber", return_value=mock_cmd_subscriber),
+        _patch_registration(),
+    ):
+        start_task = asyncio.create_task(worker.start())
+        await worker.wait_until_ready()
+
+        mock_cmd_subscriber.start.assert_called_once()
+
+        await worker.stop()
+        await start_task
+
+    mock_cmd_subscriber.stop.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_registration_failure_aborts_before_subscribing() -> None:
     wf = _make_workflow("wf_type_a")
     connection = _make_connection()

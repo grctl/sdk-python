@@ -14,7 +14,7 @@ from ulid import ULID
 
 from grctl.models import DescribeCmd, GrctlAPIResponse, HistoryEvent, RunInfo
 from grctl.models.command import CmdKind, Command
-from grctl.models.errors import WorkflowAlreadyRunningError, WorkflowError, WorkflowNotFoundError
+from grctl.models.errors import WorkflowAlreadyRunningError, WorkflowError, WorkflowNotFoundError, WorkflowTypeNotRegisteredError
 from grctl.nats.connection import Connection
 from grctl.nats.history_fetch import fetch_run_history
 from grctl.worker.codec import CodecRegistry
@@ -26,6 +26,7 @@ _T = TypeVar("_T")
 
 ErrWorkflowAlreadyRunningCode = 4001
 ErrWorkflowRunNotFoundCode = 4002
+ErrWorkflowTypeNotRegisteredCode = 4004
 
 
 class Client:
@@ -162,6 +163,8 @@ class Client:
             error_code = response.error.code if response.error else 0
             if error_code == ErrWorkflowAlreadyRunningCode:
                 raise WorkflowAlreadyRunningError(f"workflow '{id}' already has an active run: {error_msg}")
+            if error_code == ErrWorkflowTypeNotRegisteredCode:
+                raise WorkflowTypeNotRegisteredError(f"no worker registered for workflow type '{type}': {error_msg}")
             raise WorkflowError(f"start_workflow failed (code={error_code}): {error_msg}")
 
         return handle
