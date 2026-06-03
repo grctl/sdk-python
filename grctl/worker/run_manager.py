@@ -124,6 +124,8 @@ class RunManager:
         task = self._runner_tasks.get(run_id)
         if task is None:
             return False
+
+        logger.debug(f"Terminating runner task for run_id={run_id}")
         task.cancel()
         return True
 

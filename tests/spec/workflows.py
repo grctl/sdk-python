@@ -80,6 +80,25 @@ def make_two_step_workflow(prefix: str = "spec_two_step") -> Workflow:
     return wf
 
 
+def make_slow_step_workflow(
+    step_sleep: float = 2.0,
+    step_timeout: timedelta = timedelta(seconds=30),
+    prefix: str = "spec_slow_step",
+) -> Workflow:
+    wf = Workflow(workflow_type=unique_workflow_type(prefix))
+
+    @wf.start()
+    async def start(ctx: Context) -> Directive:
+        return ctx.next.step(slow_step)
+
+    @wf.step(timeout=step_timeout)
+    async def slow_step(ctx: Context) -> Directive:
+        await asyncio.sleep(step_sleep)
+        return ctx.next.complete("slow-step-ok")
+
+    return wf
+
+
 def make_blocking_step_workflow(
     step_timeout: timedelta = timedelta(seconds=0.1),
     prefix: str = "spec_blocking_step",
