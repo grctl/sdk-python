@@ -107,6 +107,7 @@ class Subscriber:
             await msg.ack()
         except asyncio.CancelledError:
             logger.info("Task cancelled directive_id=%s", directive.id)
+            await msg.ack()
         except Exception:
             # Fail directive already published by workflow_error_handler inside the runner
             logger.debug("Runner task raised exception directive_id=%s", directive.id)

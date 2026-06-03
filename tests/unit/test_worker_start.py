@@ -15,6 +15,11 @@ from grctl.workflow.workflow import Workflow
 def _make_workflow(workflow_type: str) -> Workflow:
     wf = MagicMock(spec=Workflow)
     wf.workflow_type = workflow_type
+    wf.start_handler = None
+    wf.start_step_name = workflow_type
+    wf.step_names = []
+    wf.event_names = []
+    wf.query_names = []
     return wf
 
 
@@ -110,6 +115,32 @@ async def test_wait_until_ready_propagates_startup_failure() -> None:
 
         with pytest.raises(RuntimeError, match="boom"):
             await start_task
+
+
+@pytest.mark.asyncio
+async def test_worker_cmd_subscriber_lifecycle() -> None:
+    wf = _make_workflow("wf_type_a")
+    connection = _make_connection()
+
+    worker = Worker(workflows=[wf], connection=connection)
+
+    mock_subscriber = AsyncMock()
+    mock_cmd_subscriber = AsyncMock()
+
+    with (
+        patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber),
+        patch("grctl.worker.worker.WorkerCmdSubscriber", return_value=mock_cmd_subscriber),
+        _patch_registration(),
+    ):
+        start_task = asyncio.create_task(worker.start())
+        await worker.wait_until_ready()
+
+        mock_cmd_subscriber.start.assert_called_once()
+
+        await worker.stop()
+        await start_task
+
+    mock_cmd_subscriber.stop.assert_called_once()
 
 
 @pytest.mark.asyncio

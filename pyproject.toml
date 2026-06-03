@@ -62,7 +62,7 @@ module-root = ""
 [tool.pytest.ini_options]
 addopts = "--ignore=tests/examples --ignore=tests/e2e --ignore=tests/spec"
 testpaths = ["tests"]
-log_cli = true
+log_cli = false
 log_cli_level = "DEBUG"
 pythonpath = "."
 asyncio_mode = "auto"

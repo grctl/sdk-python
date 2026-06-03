@@ -14,6 +14,7 @@ class CmdKind(StrEnum):
     run_terminate = "run.terminate"
     run_event = "run.event"
     worker_register = "worker.register"
+    worker_terminate_run = "worker.terminate_run"
 
 
 class StartCmd(msgspec.Struct):
@@ -51,6 +52,12 @@ class TerminateCmd(msgspec.Struct):
     reason: str | None
 
 
+class WorkerTerminateRunCmd(msgspec.Struct):
+    """Server→worker signal to cancel a specific in-flight run."""
+
+    run_id: str
+
+
 class WorkflowTypeDef(msgspec.Struct):
     """Structural definition of one workflow type reported at registration.
 
@@ -62,6 +69,7 @@ class WorkflowTypeDef(msgspec.Struct):
     steps: list[str]
     events: list[str]
     queries: list[str]
+    start_step_timeout_ms: int = 0
 
 
 class RegisterCmd(msgspec.Struct):
@@ -71,7 +79,7 @@ class RegisterCmd(msgspec.Struct):
     types: list[WorkflowTypeDef]
 
 
-type CommandMessage = StartCmd | EventCmd | CancelCmd | DescribeCmd | TerminateCmd | RegisterCmd
+type CommandMessage = StartCmd | EventCmd | CancelCmd | DescribeCmd | TerminateCmd | RegisterCmd | WorkerTerminateRunCmd
 
 
 class Command(msgspec.Struct):
@@ -90,6 +98,7 @@ command_factories: dict[str, type] = {
     "run.terminate": TerminateCmd,
     "run.event": EventCmd,
     "worker.register": RegisterCmd,
+    "worker.terminate_run": WorkerTerminateRunCmd,
 }
 
 
@@ -104,7 +113,6 @@ class CommandWire(msgspec.Struct):
     m: bytes
     t: datetime
     s: str = ""
-
 
 
 def command_encoder(cmd: Command) -> bytes:

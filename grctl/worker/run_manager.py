@@ -119,6 +119,14 @@ class RunManager:
             self._runner_tasks.pop(run_id, None)
             logger.debug(f"Cleaned up runner task for run_id={run_id}")
 
+    def terminate_run(self, run_id: str) -> bool:
+        """Cancel an in-flight run task. Returns True if the task was found and cancelled."""
+        task = self._runner_tasks.get(run_id)
+        if task is None:
+            return False
+        task.cancel()
+        return True
+
     async def shutdown(self) -> None:
         """Wait for all running tasks to complete."""
         if self._runner_tasks:

@@ -5,9 +5,19 @@ import pytest
 import ulid
 
 from grctl.models import HistoryKind
-from grctl.models.errors import WorkflowAlreadyRunningError, WorkflowError, WorkflowNotFoundError
+from grctl.models.errors import (
+    WorkflowAlreadyRunningError,
+    WorkflowError,
+    WorkflowNotFoundError,
+    WorkflowTypeNotRegisteredError,
+)
 from tests.spec.history import HistoryAccess
-from tests.spec.workflows import make_completing_workflow, make_failing_workflow, make_waiting_event_workflow
+from tests.spec.workflows import (
+    make_completing_workflow,
+    make_failing_workflow,
+    make_waiting_event_workflow,
+    unique_workflow_type,
+)
 
 
 async def test_start_workflow_returns_handle_with_run_info(worker, grctl_client) -> None:
@@ -223,3 +233,13 @@ async def test_in_flight_completed_workflow_resolves_future(worker, grctl_client
         assert result == "done"
     finally:
         await attached_handle.future.stop()
+
+
+async def test_start_workflow_rejected_for_unregistered_type(grctl_client) -> None:
+    with pytest.raises(WorkflowTypeNotRegisteredError):
+        await grctl_client.start_workflow(
+            type=unique_workflow_type("spec_unregistered"),
+            id=str(ulid.ULID()),
+            input={},
+            timeout=timedelta(seconds=30),
+        )

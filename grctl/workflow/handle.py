@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload
 from ulid import ULID
 
 from grctl.logging_config import get_logger
-from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd
+from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd, TerminateCmd
 from grctl.worker.codec import CodecRegistry
 from grctl.workflow.future import WorkflowFuture
 
@@ -105,6 +105,19 @@ class WorkflowHandle:
             kind=CmdKind.run_cancel,
             timestamp=datetime.now(UTC),
             msg=CancelCmd(
+                wf_id=self.run_info.wf_id,
+                reason=reason,
+            ),
+            sender_id=self._sender_id,
+        )
+        await self._connection.publisher.publish_cmd(self.run_info, cmd)
+
+    async def terminate(self, reason: str | None = None) -> None:
+        cmd = Command(
+            id=str(ULID()),
+            kind=CmdKind.run_terminate,
+            timestamp=datetime.now(UTC),
+            msg=TerminateCmd(
                 wf_id=self.run_info.wf_id,
                 reason=reason,
             ),
