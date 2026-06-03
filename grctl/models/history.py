@@ -12,7 +12,7 @@ class HistoryKind(StrEnum):
     run_started = "run.started"
     run_completed = "run.completed"
     run_failed = "run.failed"
-    run_cancel_scheduled = "run.cancel_scheduled"
+    run_cancel_received = "run.cancel_received"
     run_cancelled = "run.cancelled"
     run_terminated = "run.terminated"
     run_timeout = "run.timeout"
@@ -61,8 +61,8 @@ class RunFailed(msgspec.Struct):
     duration_ms: int
 
 
-class RunCancelScheduled(msgspec.Struct):
-    """Workflow cancellation has been scheduled."""
+class RunCancelReceived(msgspec.Struct):
+    """Workflow cancellation received while a step is in-flight; deferred until step completes."""
 
 
 class RunCancelled(msgspec.Struct):
@@ -235,21 +235,14 @@ class ParentEventSent(msgspec.Struct):
 
 
 RunEvents = (
-    RunCancelScheduled
-    | RunCancelled
-    | RunCompleted
-    | RunFailed
-    | RunScheduled
-    | RunStarted
-    | RunTerminated
-    | RunTimeout
+    RunCancelReceived | RunCancelled | RunCompleted | RunFailed | RunScheduled | RunStarted | RunTerminated | RunTimeout
 )
 WaitEvents = WaitStarted | WaitTimedOut | EventReceived
 StepEvents = StepStarted | StepCompleted | StepFailed | StepCancelled | StepTimeout
 TaskEvents = TaskStarted | TaskCompleted | TaskFailed | TaskAttemptFailed | TaskCancelled
 DeterministicEvents = TimestampRecorded | RandomRecorded | UuidRecorded | SleepRecorded
 HistoryEvents = (
-    RunCancelScheduled
+    RunCancelReceived
     | RunCancelled
     | RunCompleted
     | RunFailed
@@ -297,7 +290,7 @@ history_factories: dict[str, type] = {
     "run.started": RunStarted,
     "run.completed": RunCompleted,
     "run.failed": RunFailed,
-    "run.cancel_scheduled": RunCancelScheduled,
+    "run.cancel_received": RunCancelReceived,
     "run.cancelled": RunCancelled,
     "run.terminated": RunTerminated,
     "run.timeout": RunTimeout,
