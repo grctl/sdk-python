@@ -15,6 +15,11 @@ from grctl.workflow.workflow import Workflow
 def _make_workflow(workflow_type: str) -> Workflow:
     wf = MagicMock(spec=Workflow)
     wf.workflow_type = workflow_type
+    wf.start_handler = None
+    wf.start_step_name = workflow_type
+    wf.step_names = []
+    wf.event_names = []
+    wf.query_names = []
     return wf
 
 

@@ -85,7 +85,7 @@ class WorkflowRunner:
 
     @workflow_error_handler
     async def handle_start(self, payload: Any | None) -> None:
-        handler_config = self.workflow._start_handler  # noqa: SLF001
+        handler_config = self.workflow.start_handler
         if handler_config is None:
             raise ValueError("Workflow start handler is not defined.")
 

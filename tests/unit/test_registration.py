@@ -62,7 +62,7 @@ def test_build_catalog_matches_decorators() -> None:
     assert type_def.queries == ["status"]
 
 
-def test_build_catalog_without_start_handler_yields_empty_start_step() -> None:
+def test_build_catalog_withoutstart_handler_yields_empty_start_step() -> None:
     wf = Workflow(workflow_type="no_start_wf")
     catalog = build_catalog([wf])
     assert catalog[0].start_step == ""
@@ -113,7 +113,14 @@ def test_register_cmd_wire_keys_match_go_tags() -> None:
     as_dict = msgspec.msgpack.decode(msgspec.msgpack.encode(msg))
 
     assert set(as_dict.keys()) == {"worker_id", "types"}
-    assert set(as_dict["types"][0].keys()) == {"type", "start_step", "steps", "events", "queries", "start_step_timeout_ms"}
+    assert set(as_dict["types"][0].keys()) == {
+        "type",
+        "start_step",
+        "steps",
+        "events",
+        "queries",
+        "start_step_timeout_ms",
+    }
 
 
 def _connection_with_reply(reply_data: bytes) -> AsyncMock:

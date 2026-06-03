@@ -30,6 +30,7 @@ async def test_step_failure_emits_step_failed(worker, grctl_client) -> None:
     assert failed_event.kind == HistoryKind.step_failed
     assert failed_event.msg.error.type == "ValueError"  # ty:ignore[unresolved-attribute]
     assert "step exploded: code=42" in failed_event.msg.error.message  # ty:ignore[unresolved-attribute]
+    await handle.future.discard()
 
 
 async def test_step_failure_propagates_to_workflow_failure(worker, grctl_client) -> None:
@@ -72,3 +73,4 @@ async def test_step_failure_message_is_preserved(worker, grctl_client) -> None:
 
     failed_event = step_events[-1]
     assert "step exploded: code=42" in failed_event.msg.error.message  # ty:ignore[unresolved-attribute]
+    await handle.future.discard()

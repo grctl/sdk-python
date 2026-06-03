@@ -21,10 +21,26 @@ depends = ["lint", "format", "typecheck"]
 description = "Run unit tests"
 run = "uv run pytest tests/unit"
 
+[tasks."test:examples"]
+description = "Run examples tests"
+run = "uv run pytest tests/examples"
+
+[tasks."test:spec1"]
+description = "Run e2e tests"
+run = "uv run pytest tests/spec/child_workflow tests/spec/context tests/spec/events"
+
+[tasks."test:spec2"]
+description = "Run spec2 tests"
+run = "uv run pytest tests/spec/execution"
+
+[tasks."test:spec3"]
+description = "Run spec3 tests"
+run = "uv run pytest tests/spec/steps tests/spec/tasks"
+
 [tasks."test:e2e"]
 description = "Run e2e tests"
-run = "uv run pytest tests/spec tests/e2e tests/examples"
+depends = ["test:spec1", "test:spec2", "test:spec3"]
 
 [tasks.test]
 description = "Run all tests"
-depends = ["test:unit", "test:e2e"]
+depends = ["test:unit", "test:e2e", "test:examples"]

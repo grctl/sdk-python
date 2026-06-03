@@ -26,7 +26,7 @@ def _make_history_event(kind: HistoryKind, msg: object, operation_id: str) -> Hi
         worker_id="w-1",
         timestamp=datetime.now(UTC),
         kind=kind,
-        msg=msg,
+        msg=msg,  # ty:ignore[invalid-argument-type]
         operation_id=operation_id,
     )
 
@@ -90,9 +90,7 @@ class TestStepPickedUpPublishing:
         @wf.start()
         async def start(ctx: Context) -> Directive:
             pickup_directives = [
-                msg
-                for _, msg in published
-                if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_picked_up
+                msg for _, msg in published if isinstance(msg, Directive) and msg.kind == DirectiveKind.step_picked_up
             ]
             handler_called_after_pickup.append(len(pickup_directives) > 0)
             return ctx.next.complete(None)

@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 import msgspec
@@ -6,6 +5,7 @@ from nats.aio.client import Client as NatsClient
 from nats.aio.msg import Msg
 
 from grctl.logging_config import get_logger
+from grctl.models import Command
 from grctl.models.api import GrctlAPIResponse
 from grctl.models.command import CmdKind, WorkerTerminateRunCmd, command_decoder
 from grctl.nats.manifest import NatsManifest
@@ -50,11 +50,13 @@ class WorkerCmdSubscriber:
         success = await self._dispatch_command(cmd)
         await msg.respond(msgspec.msgpack.encode(GrctlAPIResponse(success=success)))
 
-    async def _dispatch_command(self, cmd) -> bool:
+    async def _dispatch_command(self, cmd: Command) -> bool:
         match cmd.kind:
             case CmdKind.worker_terminate_run:
-                assert isinstance(cmd.msg, WorkerTerminateRunCmd)
-                return self._run_manager.terminate_run(cmd.msg.run_id)
+                if isinstance(cmd.msg, WorkerTerminateRunCmd):
+                    return self._run_manager.terminate_run(cmd.msg.run_id)
+                logger.warning("Invalid worker terminate run command: %s", cmd.msg)
+                return False
             case _:
                 logger.warning("Unknown worker command kind: %s", cmd.kind)
                 return False

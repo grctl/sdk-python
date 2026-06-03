@@ -14,7 +14,12 @@ from ulid import ULID
 
 from grctl.models import DescribeCmd, GrctlAPIResponse, HistoryEvent, RunInfo
 from grctl.models.command import CmdKind, Command
-from grctl.models.errors import WorkflowAlreadyRunningError, WorkflowError, WorkflowNotFoundError, WorkflowTypeNotRegisteredError
+from grctl.models.errors import (
+    WorkflowAlreadyRunningError,
+    WorkflowError,
+    WorkflowNotFoundError,
+    WorkflowTypeNotRegisteredError,
+)
 from grctl.nats.connection import Connection
 from grctl.nats.history_fetch import fetch_run_history
 from grctl.worker.codec import CodecRegistry

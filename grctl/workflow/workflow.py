@@ -81,7 +81,7 @@ class Workflow:
 
     def __init__(self, workflow_type: str) -> None:
         self._type = workflow_type
-        self._start_handler: HandlerConfig | None = None
+        self.start_handler: HandlerConfig | None = None
         self._run_handler: Callable[..., Any] | None = None
         self._step_handlers: dict[str, HandlerConfig] = {}
         self._on_event_handlers: dict[str, HandlerConfig] = {}
@@ -107,9 +107,9 @@ class Workflow:
     @property
     def start_step_name(self) -> str | None:
         """Handler name of the start step, or None if no start handler is registered."""
-        if self._start_handler is None:
+        if self.start_handler is None:
             return None
-        return self._start_handler.handler.__name__  # ty:ignore[unresolved-attribute]
+        return self.start_handler.handler.__name__  # ty:ignore[unresolved-attribute]
 
     @property
     def step_names(self) -> list[str]:
@@ -134,7 +134,8 @@ class Workflow:
         per workflow.
 
         Args:
-            timeout: Start step timeout. Sent to the server at registration. If None, the server uses its configured default.
+            timeout: Start step timeout. Sent to the server at registration.
+            If None, the server uses its configured default.
 
         Returns:
             Decorator function that registers the start handler.
@@ -151,12 +152,12 @@ class Workflow:
         """
 
         def decorator(func: _HandlerF) -> _HandlerF:
-            if self._start_handler is not None:
-                msg = f"Workflow already has a start handler: {self._start_handler.handler.__name__}"  # ty:ignore[unresolved-attribute]
+            if self.start_handler is not None:
+                msg = f"Workflow already has a start handler: {self.start_handler.handler.__name__}"  # ty:ignore[unresolved-attribute]
                 raise ValueError(msg)
 
             spec = inspect_handler(func)
-            self._start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
+            self.start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
             logger.debug(f"Registered start handler for workflow: {self._type}")
             return func
 

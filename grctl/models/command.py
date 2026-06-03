@@ -115,7 +115,6 @@ class CommandWire(msgspec.Struct):
     s: str = ""
 
 
-
 def command_encoder(cmd: Command) -> bytes:
     """Encode command to msgpack with compact wire format."""
     if cmd.msg is None:

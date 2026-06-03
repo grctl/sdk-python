@@ -2,7 +2,7 @@
 
 import logging
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import msgspec
 import pytest
@@ -51,9 +51,7 @@ async def test_start_subscribes_to_worker_cmd_subject() -> None:
     manifest.worker_cmd_subject.return_value = "grctl_worker_cmd.worker-1"
     sub = WorkerCmdSubscriber(nc=nc, manifest=manifest, worker_id="worker-1", run_manager=MagicMock())
     await sub.start()
-    nc.subscribe.assert_awaited_once_with(
-        "grctl_worker_cmd.worker-1", cb=sub._on_message
-    )
+    nc.subscribe.assert_awaited_once_with("grctl_worker_cmd.worker-1", cb=sub._on_message)
 
 
 @pytest.mark.asyncio

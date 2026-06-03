@@ -38,7 +38,7 @@ jobs:
 
       - name: Start grctl Server
         run: |
-          grctld --in-memory -l debug > /tmp/grctld.log 2>&1 &
+          grctld --in-memory > /tmp/grctld.log 2>&1 &
           echo "SERVER_PID=$!" >> $GITHUB_ENV
 
       - name: Wait for Server (Port 4225)

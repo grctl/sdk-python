@@ -41,7 +41,7 @@ def build_catalog(workflows: list[Workflow]) -> list[WorkflowTypeDef]:
 
 
 def _to_type_def(workflow: Workflow) -> WorkflowTypeDef:
-    start_timeout = workflow._start_handler.timeout if workflow._start_handler else None
+    start_timeout = workflow.start_handler.timeout if workflow.start_handler else None
     start_step_timeout_ms = int(start_timeout.total_seconds() * 1000) if start_timeout is not None else 0
     return WorkflowTypeDef(
         type=workflow.workflow_type,

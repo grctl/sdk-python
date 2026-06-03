@@ -14,6 +14,7 @@ class HistoryKind(StrEnum):
     run_failed = "run.failed"
     run_cancel_scheduled = "run.cancel_scheduled"
     run_cancelled = "run.cancelled"
+    run_terminated = "run.terminated"
     run_timeout = "run.timeout"
     wait_started = "wait.started"
     wait_timed_out = "wait.timed_out"
@@ -66,6 +67,13 @@ class RunCancelScheduled(msgspec.Struct):
 
 class RunCancelled(msgspec.Struct):
     """Workflow execution was cancelled."""
+
+    reason: str
+    duration_ms: int
+
+
+class RunTerminated(msgspec.Struct):
+    """Workflow execution was forcefully terminated."""
 
     reason: str
     duration_ms: int
@@ -226,7 +234,16 @@ class ParentEventSent(msgspec.Struct):
     parent_wf_id: str
 
 
-RunEvents = RunCancelScheduled | RunCancelled | RunCompleted | RunFailed | RunScheduled | RunStarted | RunTimeout
+RunEvents = (
+    RunCancelScheduled
+    | RunCancelled
+    | RunCompleted
+    | RunFailed
+    | RunScheduled
+    | RunStarted
+    | RunTerminated
+    | RunTimeout
+)
 WaitEvents = WaitStarted | WaitTimedOut | EventReceived
 StepEvents = StepStarted | StepCompleted | StepFailed | StepCancelled | StepTimeout
 TaskEvents = TaskStarted | TaskCompleted | TaskFailed | TaskAttemptFailed | TaskCancelled
@@ -238,6 +255,7 @@ HistoryEvents = (
     | RunFailed
     | RunScheduled
     | RunStarted
+    | RunTerminated
     | RunTimeout
     | StepStarted
     | StepCompleted
@@ -281,6 +299,7 @@ history_factories: dict[str, type] = {
     "run.failed": RunFailed,
     "run.cancel_scheduled": RunCancelScheduled,
     "run.cancelled": RunCancelled,
+    "run.terminated": RunTerminated,
     "run.timeout": RunTimeout,
     "wait.started": WaitStarted,
     "wait.timed_out": WaitTimedOut,

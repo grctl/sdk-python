@@ -15,6 +15,7 @@ from grctl.models import (
     RunCompleted,
     RunFailed,
     RunInfo,
+    RunTerminated,
     RunTimeout,
 )
 from grctl.models.errors import WorkflowError
@@ -50,6 +51,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             HistoryKind.run_failed: self._on_run_failed,
             HistoryKind.run_timeout: self._on_run_timeout,
             HistoryKind.run_cancelled: self._on_run_cancelled,
+            HistoryKind.run_terminated: self._on_run_terminated,
         }
 
     async def start(self) -> None:
@@ -159,6 +161,15 @@ class WorkflowFuture(asyncio.Future[Any]):
             logger.error("Run %s cancel payload mismatch: %s", self.run_info.id, type(payload))
             return
         self.set_exception(asyncio.CancelledError("Workflow cancelled"))
+
+    def _on_run_terminated(self, event: HistoryEvent) -> None:
+        if self.done():
+            return
+        payload = event.msg
+        if not isinstance(payload, RunTerminated):
+            logger.error("Run %s terminated payload mismatch: %s", self.run_info.id, type(payload))
+            return
+        self.set_exception(asyncio.CancelledError("Workflow terminated"))
 
 
 async def create_workflow_future(
