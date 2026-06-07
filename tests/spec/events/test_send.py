@@ -77,3 +77,25 @@ async def test_send_event_emits_event_received_in_history(worker, grctl_client) 
         await asyncio.wait_for(handle.future, timeout=30)
     finally:
         await handle.future.stop()
+
+
+async def test_send_before_wait_still_processes_event(worker, grctl_client) -> None:
+    wf = make_waiting_event_workflow(prefix="spec_events_send_before_wait")
+    await worker([wf])
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=wf_id,
+        input={},
+        timeout=timedelta(seconds=30),
+    )
+
+    try:
+        # Send event *before* the workflow reaches the wait directive
+        await handle.send("finish")
+
+        result = await asyncio.wait_for(handle.future, timeout=30)
+        assert result == "done"
+    finally:
+        await handle.future.stop()

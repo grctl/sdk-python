@@ -84,9 +84,6 @@ class NextBuilder:
         )
 
     def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive:
-        if (timeout is None) != (on_timeout is None):
-            raise ValueError("timeout and on_timeout must both be provided or both omitted")
-
         timeout_step_name = getattr(on_timeout, "__name__", "") if on_timeout is not None else ""
         res = StepResult(
             processed_msg_kind=self._current_directive.kind,
@@ -238,21 +235,6 @@ class Context:
             operation_id,
         )
 
-    async def start(
-        self,
-        workflow_type: str,
-        workflow_id: str,
-        workflow_input: dict[str, Any] | None = None,
-        workflow_timeout: timedelta | None = None,
-    ) -> WorkflowHandle:
-        """Start a child workflow and return its handle.
-
-        Fire-and-forget: the parent is responsible for observing the child (e.g. via
-        send_to_parent events). Use start_child to have the server trigger a parent step
-        automatically when the child reaches a terminal state.
-        """
-        return await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
-
     async def start_child(
         self,
         workflow_type: str,
@@ -311,6 +293,25 @@ class Context:
                 operation_id,
             )
         return handle
+
+    async def run_child(
+        self,
+        workflow_type: str,
+        workflow_id: str,
+        workflow_input: dict[str, Any] | None = None,
+        workflow_timeout: timedelta | None = None,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> Any:
+        """Start a child workflow and block until it completes, returning its result.
+
+        Raises WorkflowError on failure, asyncio.CancelledError on cancellation/termination,
+        and TimeoutError if the client-side timeout elapses.
+        timeout: client-side wait in seconds, independent of the server-side workflow_timeout.
+        """
+        handle = await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
+        if not handle.future.is_started:
+            await handle.future.start()
+        return await handle.result(timeout=timeout)
 
     async def discard_started_handles(self) -> None:
         """Silently release child handles started during this step but not awaited.

@@ -6,6 +6,7 @@ import pytest
 
 from grctl.models import (
     Command,
+    EventDef,
     RegisterCmd,
     WorkflowTypeDef,
     command_decoder,
@@ -58,7 +59,7 @@ def test_build_catalog_matches_decorators() -> None:
     assert type_def.type == "order_wf"
     assert type_def.start_step == "start"
     assert sorted(type_def.steps) == ["charge", "reserve"]
-    assert type_def.events == ["approve"]
+    assert type_def.events == [EventDef(name="approve")]
     assert type_def.queries == ["status"]
 
 
@@ -80,7 +81,7 @@ def test_register_cmd_command_roundtrip() -> None:
                     type="order_wf",
                     start_step="start",
                     steps=["reserve", "charge"],
-                    events=["approve"],
+                    events=[EventDef(name="approve")],
                     queries=["status"],
                 )
             ],
@@ -104,7 +105,7 @@ def test_register_cmd_wire_keys_match_go_tags() -> None:
                 type="order_wf",
                 start_step="start",
                 steps=["reserve"],
-                events=["approve"],
+                events=[EventDef(name="approve")],
                 queries=["status"],
             )
         ],
@@ -113,13 +114,20 @@ def test_register_cmd_wire_keys_match_go_tags() -> None:
     as_dict = msgspec.msgpack.decode(msgspec.msgpack.encode(msg))
 
     assert set(as_dict.keys()) == {"worker_id", "types"}
-    assert set(as_dict["types"][0].keys()) == {
+    type_def_dict = as_dict["types"][0]
+    assert set(type_def_dict.keys()) == {
         "type",
         "start_step",
         "steps",
         "events",
         "queries",
         "start_step_timeout_ms",
+    }
+    # EventDef encodes as a map with correct field names
+    assert len(type_def_dict["events"]) == 1
+    assert set(type_def_dict["events"][0].keys()) == {
+        "name",
+        "timeout_ms",
     }
 
 

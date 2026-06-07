@@ -27,7 +27,7 @@ async def test_failed_child_raises_workflow_error_on_parent_step(worker, grctl_c
 
     @parent_wf.start()
     async def parent_start(ctx: Context) -> Directive:
-        handle = await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+        handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         await handle.future
         return ctx.next.complete("unreachable")
 
@@ -55,7 +55,7 @@ async def test_child_failure_message_is_preserved(worker, grctl_client: Client) 
 
     @parent_wf.start()
     async def parent_start(ctx: Context) -> Directive:
-        handle = await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+        handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         await handle.future
         return ctx.next.complete("unreachable")
 

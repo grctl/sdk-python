@@ -47,7 +47,7 @@ def _to_type_def(workflow: Workflow) -> WorkflowTypeDef:
         type=workflow.workflow_type,
         start_step=workflow.start_step_name or "",
         steps=workflow.step_names,
-        events=workflow.event_names,
+        events=workflow.event_defs,
         queries=workflow.query_names,
         start_step_timeout_ms=start_step_timeout_ms,
     )

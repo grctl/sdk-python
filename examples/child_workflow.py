@@ -86,7 +86,7 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
     ctx.logger.info(f"Order workflow started for order {order_id}")
 
     payment_workflow_id = f"payment-{validated_id}-{ulid.ULID()}"
-    payment_handle = await ctx.start(
+    payment_handle = await ctx.start_child(
         payment_wf.workflow_type,
         workflow_id=payment_workflow_id,
         workflow_input={"amount": validated_amount},

@@ -2,9 +2,11 @@ import asyncio
 import time
 from datetime import timedelta
 
+import pytest
 import ulid
 
 from grctl.models import HistoryKind
+from grctl.models.errors import WorkflowError
 from grctl.worker import Context
 from grctl.workflow import Directive, Workflow
 from tests.spec.history import HistoryAccess
@@ -104,5 +106,36 @@ async def test_event_handler_can_loop_back_to_wait(worker, grctl_client) -> None
         await handle.send("second_event")
         result = await asyncio.wait_for(handle.future, timeout=30)
         assert result == "done-after-second"
+    finally:
+        await handle.future.stop()
+
+
+async def test_event_timeout_fails_workflow(worker, grctl_client) -> None:
+    wf = Workflow(workflow_type=unique_workflow_type("spec_dispatch_event_timeout_with_handler"))
+
+    @wf.start()
+    async def start(ctx: Context) -> Directive:
+        return ctx.next.wait()
+
+    @wf.event(timeout=timedelta(milliseconds=100))
+    async def finish(ctx: Context) -> Directive:
+        await asyncio.sleep(1)
+        return ctx.next.complete("done")
+
+    await worker([wf])
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(
+        type=wf.workflow_type,
+        id=wf_id,
+        input={},
+        timeout=timedelta(seconds=30),
+    )
+
+    await handle.send("finish")
+
+    try:
+        with pytest.raises(WorkflowError, match="step finish timed out"):
+            await asyncio.wait_for(handle.future, timeout=15)
     finally:
         await handle.future.stop()
