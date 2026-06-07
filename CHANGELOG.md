@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.2.1...grctl-sdk-python-v0.3.0) (2026-06-07)
+
+
+### Features
+
+* child wf callback ([#22](https://github.com/grctl/sdk-python/issues/22)) ([2b8e216](https://github.com/grctl/sdk-python/commit/2b8e21616baad2ff3015029c78dbc1b2c2f8c9c4))
+* event timeouts ([#27](https://github.com/grctl/sdk-python/issues/27)) ([98b8e45](https://github.com/grctl/sdk-python/commit/98b8e451d39dab9260f66893b25182b0ca3fe7e6))
+* execution termination ([#25](https://github.com/grctl/sdk-python/issues/25)) ([5587ac2](https://github.com/grctl/sdk-python/commit/5587ac227a97fa08411952a88b29134d344cfadf))
+* worker registery ([#24](https://github.com/grctl/sdk-python/issues/24)) ([6346572](https://github.com/grctl/sdk-python/commit/63465720456c6fab631f477200e3139087dd7bd2))
+
+
+### Bug Fixes
+
+* workflow cancel ([#26](https://github.com/grctl/sdk-python/issues/26)) ([7bae2b7](https://github.com/grctl/sdk-python/commit/7bae2b7f3dcbf126eeb6ff38999d7b9cc532c001))
+
 ## [0.2.1](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.2.0...grctl-sdk-python-v0.2.1) (2026-05-29)
 
 
