@@ -35,13 +35,13 @@ def _configure_fast_replay_redelivery() -> None:
     os.environ.setdefault("ENGINE_NATS_WORKER_ACK_WAIT", _REPLAY_WORKER_ACK_WAIT_SECONDS)
 
 
-# ─── ctx.start() skip scenario ────────────────────────────────────────────────
+# ─── ctx.start_child() skip scenario ────────────────────────────────────────────────
 
 
 def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_event=None) -> None:
-    """Worker for ctx.start() replay test.
+    """Worker for ctx.start_child() replay test.
 
-    Worker A calls ctx.start() and records child.started, then pauses.
+    Worker A calls ctx.start_child() and records child.started, then pauses.
     Worker B picks up the re-delivered directive and skips child startup via replay.
     """
 
@@ -62,7 +62,7 @@ def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         @parent_wf.step()
         async def parent_main(ctx: Context) -> Directive:
-            await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("parent-done")
@@ -104,7 +104,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
 
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.event(name="child_done")
@@ -144,7 +144,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
 
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
@@ -183,7 +183,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
 
         @parent_wf.start()
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.event(name="status_v1")
@@ -225,7 +225,7 @@ def _ndet_child_id_v1_worker(parent_wf_type: str, child_wf_type: str, pause_even
         @parent_wf.step()
         async def parent_main(ctx: Context) -> Directive:
             child_id = f"{ctx.run.wf_id}-child"
-            await ctx.start(child_wf_type, child_id)
+            await ctx.start_child(child_wf_type, child_id)
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("done")
@@ -260,8 +260,53 @@ def _ndet_child_id_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
         @parent_wf.step()
         async def parent_main(ctx: Context) -> Directive:
             child_id = str(_ulid.ULID())  # non-deterministic: different on each call
-            await ctx.start(child_wf_type, child_id)
+            await ctx.start_child(child_wf_type, child_id)
             return ctx.next.complete("done")
+
+        conn = await Connection.connect(servers=[nats_url])
+        wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
+        await wk.start()
+
+    asyncio.run(run())
+
+
+# ─── run_child() skip scenario ────────────────────────────────────────────────
+
+
+def _run_child_replay_worker(parent_wf_type: str, child_wf_type: str, pause_event=None) -> None:
+    """Worker for ctx.run_child() replay test.
+
+    run_child() must be in a subsequent step (not start) so the redelivered directive has a
+    non-zero history_seq_id and the step history (including child.started) can be loaded for
+    replay. Worker A records child.started then blocks (child paused), Worker B picks up both
+    redelivered directives and replays without starting the child a second time.
+    """
+
+    async def run() -> None:
+        _configure_fast_replay_redelivery()
+        nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
+
+        child_wf = Workflow(workflow_type=child_wf_type)
+        parent_wf = Workflow(workflow_type=parent_wf_type)
+
+        @child_wf.start()
+        async def child_start(ctx: Context) -> Directive:
+            return ctx.next.step(child_work)
+
+        @child_wf.step()
+        async def child_work(ctx: Context) -> Directive:
+            if pause_event is not None:
+                await asyncio.to_thread(pause_event.wait)
+            return ctx.next.complete("child-done")
+
+        @parent_wf.start()
+        async def parent_start(ctx: Context) -> Directive:
+            return ctx.next.step(parent_run)
+
+        @parent_wf.step()
+        async def parent_run(ctx: Context) -> Directive:
+            result = await ctx.run_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            return ctx.next.complete(result)
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
@@ -383,6 +428,40 @@ async def test_nondeterminism_raises_when_send_to_parent_event_name_changes(grct
         child_handle = await grctl_client.get_workflow_handle(child_started.wf_id)
         with pytest.raises(WorkflowError, match="NonDeterminism"):
             await asyncio.wait_for(child_handle.future, timeout=60.0)
+    finally:
+        _terminate(worker_a)
+        _terminate(worker_b)
+
+
+async def test_run_child_skips_duplicate_start_on_step_retry(grctl_client: Client) -> None:
+    pause_event = multiprocessing.Event()
+    parent_wf_type = unique_workflow_type("spec_run_child_replay_parent")
+    child_wf_type = unique_workflow_type("spec_run_child_replay_child")
+
+    worker_a = multiprocessing.Process(
+        target=_run_child_replay_worker, args=(parent_wf_type, child_wf_type, pause_event), daemon=True
+    )
+    worker_b = multiprocessing.Process(
+        target=_run_child_replay_worker, args=(parent_wf_type, child_wf_type), daemon=True
+    )
+    worker_a.start()
+    await asyncio.sleep(_WORKER_INIT_DELAY)
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
+
+    try:
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        await history.wait_for_kind(HistoryKind.child_started)
+        _terminate(worker_a)
+        worker_b.start()
+
+        result = await asyncio.wait_for(handle.future, timeout=60.0)
+        assert result == "child-done"
+
+        all_events = await history.direct_events()
+        child_started_events = [e for e in all_events if e.kind == HistoryKind.child_started]
+        assert len(child_started_events) == 1, "child must be started exactly once — no duplicate on step retry"
     finally:
         _terminate(worker_a)
         _terminate(worker_b)

@@ -90,7 +90,7 @@ async def orchestrator_start(ctx: Context, input_a: str, input_b: str) -> Direct
     task_a_id = f"task-a-{ulid.ULID()}"
     task_b_id = f"task-b-{ulid.ULID()}"
 
-    handle_a = await ctx.start(
+    handle_a = await ctx.start_child(
         task_a_wf.workflow_type,
         workflow_id=task_a_id,
         workflow_input={"input_data": input_a},
@@ -98,7 +98,7 @@ async def orchestrator_start(ctx: Context, input_a: str, input_b: str) -> Direct
     )
     ctx.logger.info("Started child Task A: %s", handle_a.run_info.id)
 
-    handle_b = await ctx.start(
+    handle_b = await ctx.start_child(
         task_b_wf.workflow_type,
         workflow_id=task_b_id,
         workflow_input={"input_data": input_b},

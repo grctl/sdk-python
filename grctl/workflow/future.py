@@ -54,6 +54,10 @@ class WorkflowFuture(asyncio.Future[Any]):
             HistoryKind.run_terminated: self._on_run_terminated,
         }
 
+    @property
+    def is_started(self) -> bool:
+        return self._subscriber._subscription is not None  # noqa: SLF001
+
     async def start(self) -> None:
         """Start listening for events and publish run command."""
         await self._subscriber.start()

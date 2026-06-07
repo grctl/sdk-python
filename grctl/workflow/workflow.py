@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Any, Protocol, TypeVar
 
+from grctl.models.command import EventDef
 from grctl.models.directive import Directive
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class HandlerConfig:
     handler: Callable[..., Awaitable[Directive]]
     spec: HandlerSpec
     timeout: timedelta | None = None
+    on_timeout_handler: Callable[..., Awaitable[Directive]] | None = None
 
 
 class Workflow:
@@ -120,6 +122,15 @@ class Workflow:
     def event_names(self) -> list[str]:
         """Names of all registered event handlers."""
         return list(self._on_event_handlers.keys())
+
+    @property
+    def event_defs(self) -> list[EventDef]:
+        """EventDef for each registered event handler."""
+        defs = []
+        for name, config in self._on_event_handlers.items():
+            timeout_ms = int(config.timeout.total_seconds() * 1000) if config.timeout else 0
+            defs.append(EventDef(name=name, timeout_ms=timeout_ms))
+        return defs
 
     @property
     def query_names(self) -> list[str]:
@@ -210,6 +221,7 @@ class Workflow:
     def event(
         self,
         name: str | None = None,
+        timeout: timedelta | None = None,
     ) -> Callable[[_HandlerF], _HandlerF]:
         """Decorate workflow event handlers.
 
@@ -218,6 +230,7 @@ class Workflow:
 
         Args:
             name: Optional event name. If not provided, uses function name.
+            timeout: How long to wait for this event before timing out.
 
         Returns:
             Decorator function that registers the on_event handler.
@@ -234,6 +247,10 @@ class Workflow:
             async def my_handler(ctx: RunContext, data: str) -> Directive:
                 return ctx.next.complete()
 
+            @workflow.event(timeout=timedelta(seconds=2))
+            async def timed_event(ctx: RunContext) -> Directive:
+                return ctx.next.complete()
+
         """
 
         def decorator(func: _HandlerF) -> _HandlerF:
@@ -244,7 +261,11 @@ class Workflow:
                 raise ValueError(msg)
 
             spec = inspect_handler(func)
-            self._on_event_handlers[event_name] = HandlerConfig(handler=func, spec=spec)
+            self._on_event_handlers[event_name] = HandlerConfig(
+                handler=func,
+                spec=spec,
+                timeout=timeout,
+            )
             logger.debug(
                 f"Registered on_event handler '{event_name}' for workflow: {self._type or 'unnamed'}",
             )

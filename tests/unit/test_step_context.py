@@ -177,7 +177,7 @@ class TestStart:
             mock_handle = AsyncMock()
             mock_handle_cls.return_value = mock_handle
 
-            result = await ctx.start("order", "order-1")
+            result = await ctx.start_child("order", "order-1")
 
         mock_handle.start.assert_called_once()
         runtime.publisher.publish_history.assert_called_once()  # ty:ignore[unresolved-attribute]
@@ -209,7 +209,7 @@ class TestStart:
             mock_handle = AsyncMock()
             mock_handle_cls.return_value = mock_handle
 
-            await ctx.start("order", "order-1")
+            await ctx.start_child("order", "order-1")
 
         # handle.start() must NOT be called on replay
         mock_handle.start.assert_not_called()
@@ -234,9 +234,9 @@ class TestStart:
         ctx = _make_ctx()
 
         with pytest.raises(NonDeterminismError):
-            await ctx.start("order", "order-1")
+            await ctx.start_child("order", "order-1")
 
-    # Test 4: two ctx.start() calls with same wf_type + wf_id produce different operation_ids (seq tiebreaker)
+    # Test 4: two ctx.start_child() calls with same wf_type + wf_id produce different operation_ids (seq tiebreaker)
     async def test_two_identical_starts_produce_different_operation_ids(self) -> None:
         runtime = _setup_runtime([])
         runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
@@ -255,8 +255,8 @@ class TestStart:
 
         with patch("grctl.worker.context.WorkflowHandle") as mock_handle_cls:
             mock_handle_cls.return_value = AsyncMock()
-            await ctx.start("order", "order-1")
-            await ctx.start("order", "order-1")
+            await ctx.start_child("order", "order-1")
+            await ctx.start_child("order", "order-1")
 
         assert len(ids) == 2
         assert ids[0] != ids[1]
@@ -338,7 +338,7 @@ class TestSendToParent:
 
 
 class TestSequentialReplay:
-    # Test 9: sequential ctx.start() then ctx.send_to_parent() replay correctly in order
+    # Test 9: sequential ctx.start_child() then ctx.send_to_parent() replay correctly in order
     async def test_sequential_start_then_send_to_parent_replay(self) -> None:
         original_run_id = "01JAAAAAAAAAAAAAAAAAAAAAAB"
         runtime = _setup_runtime([])
@@ -374,14 +374,14 @@ class TestSequentialReplay:
         with patch("grctl.worker.context.WorkflowHandle") as mock_handle_cls:
             mock_handle = AsyncMock()
             mock_handle_cls.return_value = mock_handle
-            await ctx.start("order", "order-1")
+            await ctx.start_child("order", "order-1")
             await ctx.send_to_parent("started")
 
         mock_handle.start.assert_not_called()
         runtime.publisher.publish_cmd.assert_not_called()  # ty:ignore[unresolved-attribute]
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
 
-    # Test 10: ctx.start() after ctx.now() resolves at correct cursor position
+    # Test 10: ctx.start_child() after ctx.now() resolves at correct cursor position
     async def test_start_after_now_resolves_at_correct_cursor(self) -> None:
         original_run_id = "01JAAAAAAAAAAAAAAAAAAAAAAC"
         cached_ts = datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC)
@@ -410,7 +410,7 @@ class TestSequentialReplay:
         with patch("grctl.worker.context.WorkflowHandle") as mock_handle_cls:
             mock_handle = AsyncMock()
             mock_handle_cls.return_value = mock_handle
-            await ctx.start("ship", "ship-1")
+            await ctx.start_child("ship", "ship-1")
 
         mock_handle.start.assert_not_called()
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
@@ -448,11 +448,12 @@ class TestNextBuilderWait:
         assert wait_msg.timeout_step_name == ""
 
     def test_wait_with_timeout_and_on_timeout_encodes_correctly(self) -> None:
-        async def my_step(ctx: object) -> object: ...
+        async def my_step(ctx: object) -> Directive:
+            raise NotImplementedError
 
         builder = _make_next_builder()
 
-        directive = builder.wait(timeout=timedelta(minutes=5), on_timeout=my_step)  # ty:ignore[invalid-argument-type]
+        directive = builder.wait(timeout=timedelta(minutes=5), on_timeout=my_step)
 
         result = directive.msg
         assert isinstance(result, StepResult)
@@ -462,14 +463,32 @@ class TestNextBuilderWait:
         assert wait_msg.timeout_ms == 5 * 60 * 1000
         assert wait_msg.timeout_step_name == "my_step"
 
-    def test_wait_timeout_without_on_timeout_raises(self) -> None:
+    def test_wait_with_timeout_no_on_timeout_encodes_correctly(self) -> None:
         builder = _make_next_builder()
-        with pytest.raises(ValueError):  # noqa: PT011
-            builder.wait(timeout=timedelta(seconds=10))
 
-    def test_wait_on_timeout_without_timeout_raises(self) -> None:
+        directive = builder.wait(timeout=timedelta(seconds=10))
+
+        assert directive.kind == DirectiveKind.step_result
+        result = directive.msg
+        assert isinstance(result, StepResult)
+        assert result.next_msg_kind == DirectiveKind.wait
+        wait_msg = result.next_msg
+        assert isinstance(wait_msg, Wait)
+        assert wait_msg.timeout_ms == 10_000
+        assert wait_msg.timeout_step_name == ""
+
+    def test_wait_with_on_timeout_no_timeout_encodes_correctly(self) -> None:
         async def my_step(ctx: object) -> object: ...
 
         builder = _make_next_builder()
-        with pytest.raises(ValueError):  # noqa: PT011
-            builder.wait(on_timeout=my_step)  # ty:ignore[invalid-argument-type]
+
+        directive = builder.wait(on_timeout=my_step)  # ty:ignore[invalid-argument-type]
+
+        assert directive.kind == DirectiveKind.step_result
+        result = directive.msg
+        assert isinstance(result, StepResult)
+        assert result.next_msg_kind == DirectiveKind.wait
+        wait_msg = result.next_msg
+        assert isinstance(wait_msg, Wait)
+        assert wait_msg.timeout_ms == 0
+        assert wait_msg.timeout_step_name == "my_step"

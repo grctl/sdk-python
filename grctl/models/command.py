@@ -58,6 +58,13 @@ class WorkerTerminateRunCmd(msgspec.Struct):
     run_id: str
 
 
+class EventDef(msgspec.Struct, kw_only=True):
+    """Per-event timeout config carried through registration."""
+
+    name: str
+    timeout_ms: int = 0
+
+
 class WorkflowTypeDef(msgspec.Struct):
     """Structural definition of one workflow type reported at registration.
 
@@ -67,7 +74,7 @@ class WorkflowTypeDef(msgspec.Struct):
     type: str
     start_step: str
     steps: list[str]
-    events: list[str]
+    events: list[EventDef]
     queries: list[str]
     start_step_timeout_ms: int = 0
 
