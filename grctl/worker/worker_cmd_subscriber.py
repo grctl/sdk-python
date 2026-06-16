@@ -1,5 +1,3 @@
-from typing import Any
-
 import msgspec
 from nats.aio.client import Client as NatsClient
 from nats.aio.msg import Msg
@@ -9,6 +7,7 @@ from grctl.models import Command
 from grctl.models.api import GrctlAPIResponse
 from grctl.models.command import CmdKind, WorkerTerminateRunCmd, command_decoder
 from grctl.nats.manifest import NatsManifest
+from grctl.worker.run_manager import RunManager
 
 logger = get_logger(__name__)
 
@@ -21,7 +20,7 @@ class WorkerCmdSubscriber:
         nc: NatsClient,
         manifest: NatsManifest,
         worker_id: str,
-        run_manager: Any,
+        run_manager: RunManager,
     ) -> None:
         self._nc = nc
         self._manifest = manifest

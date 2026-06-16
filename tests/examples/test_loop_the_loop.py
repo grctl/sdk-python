@@ -16,7 +16,7 @@ async def test_ltl_example() -> None:
     """Run Loop the loop example workflow against a live server."""
     connection = await Connection.connect()
     worker = Worker(workflows=[ltl], connection=connection)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
     client = Client(connection=connection)
 
     try:

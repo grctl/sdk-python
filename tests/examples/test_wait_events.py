@@ -14,7 +14,7 @@ async def test_wait_events_example_end_to_end() -> None:
     """Run wait_events example workflow against a live server."""
     connection = await Connection.connect()
     worker = Worker(workflows=[greet_events], connection=connection)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
     client = Client(connection=connection)
 
     try:
@@ -53,7 +53,7 @@ async def test_get_workflow_handle_cross_process() -> None:
     # --- Process 1: start the workflow ---
     connection_1 = await Connection.connect()
     worker = Worker(workflows=[greet_events], connection=connection_1)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
     client_1 = Client(connection=connection_1)
 
     try:

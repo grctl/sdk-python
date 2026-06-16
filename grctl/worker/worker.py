@@ -6,25 +6,19 @@ They support horizontal scaling through queue groups.
 
 import asyncio
 import hashlib
-import logging
 import secrets
 import socket
 from functools import cached_property
 
 from grctl.logging_config import get_logger
 from grctl.nats.connection import Connection
-from grctl.nats.subscriber import Subscriber
+from grctl.nats.wf_subscriber import Subscriber
 from grctl.worker.registration import build_catalog, register_workflow_types
 from grctl.worker.run_manager import RunManager
 from grctl.worker.worker_cmd_subscriber import WorkerCmdSubscriber
 from grctl.workflow.workflow import Workflow
 
 logger = get_logger(__name__)
-
-
-# Constants
-DEFAULT_WORKFLOW_TIMEOUT_SECONDS: float = 30.0
-WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 1
 
 
 class Worker:
@@ -50,12 +44,10 @@ class Worker:
         self,
         workflows: list[Workflow],
         connection: Connection,
-        workflow_logger: logging.Logger = logger,
     ) -> None:
         """Initialize the worker."""
         self._workflows = workflows
         self._connection = connection
-        self._workflow_logger = workflow_logger
         self._stop_event = asyncio.Event()
         self._startup_event = asyncio.Event()
         self._subscriber: Subscriber | None = None
@@ -82,8 +74,8 @@ class Worker:
         hostname = socket.gethostname()
         return f"w_{self.worker_name}.{random_chars}@{hostname}"
 
-    async def start(self) -> None:
-        """Start the worker and begin processing messages.
+    async def run(self) -> None:
+        """Run the worker and begin processing messages.
 
         Creates RunManager for workflow execution and subscribes to workflow subjects.
         """
@@ -95,42 +87,12 @@ class Worker:
         )
 
         try:
-            self._run_manager = RunManager(
-                worker_name=self.worker_name,
-                worker_id=self.worker_id,
-                workflows=self._workflows,
-                connection=self._connection,
-                workflow_logger=self._workflow_logger,
-            )
-
-            # Register workflow types with the server before claiming any work.
-            # A failure here raises and aborts startup — fail fast, loud.
-            catalog = build_catalog(self._workflows)
-            await register_workflow_types(self._connection, self.worker_id, catalog)
-
-            wf_types = [wf.workflow_type for wf in self._workflows]
-            self._subscriber = Subscriber(
-                js=self._connection.js,
-                manifest=self._connection.manifest,
-                wf_types=wf_types,
-                run_manager=self._run_manager,
-            )
-            await self._subscriber.start()
-
-            self._worker_cmd_subscriber = WorkerCmdSubscriber(
-                nc=self._connection.nc,
-                manifest=self._connection.manifest,
-                worker_id=self.worker_id,
-                run_manager=self._run_manager,
-            )
-            await self._worker_cmd_subscriber.start()
-
+            await self._setup()
             self._startup_event.set()
-
             logger.info(f"Worker {self.worker_name} ({self.worker_id}) started and ready to process messages")
 
             # Keep worker alive
-            await self._process_messages()
+            await self._stop_event.wait()
         except Exception as exc:
             self._startup_error = exc
             self._startup_event.set()
@@ -144,9 +106,36 @@ class Worker:
         if self._subscriber is None:
             raise RuntimeError("Worker startup completed without creating a subscriber")
 
-    async def _process_messages(self) -> None:
-        """Keep worker alive to process commands."""
-        await self._stop_event.wait()
+    async def _setup(self) -> None:
+        self._run_manager = RunManager(
+            worker_name=self.worker_name,
+            worker_id=self.worker_id,
+            workflows=self._workflows,
+            connection=self._connection,
+        )
+
+        # Register workflow types with the server before claiming any work.
+        # A failure here raises and aborts startup — fail fast, loud.
+        catalog = build_catalog(self._workflows)
+        await register_workflow_types(self._connection, self.worker_id, catalog)
+
+        wf_types = [wf.workflow_type for wf in self._workflows]
+        self._subscriber = Subscriber(
+            js=self._connection.jetstream,
+            manifest=self._connection.manifest,
+            wf_types=wf_types,
+            run_manager=self._run_manager,
+            logger=logger,
+        )
+        await self._subscriber.start()
+
+        self._worker_cmd_subscriber = WorkerCmdSubscriber(
+            nc=self._connection.nc,
+            manifest=self._connection.manifest,
+            worker_id=self.worker_id,
+            run_manager=self._run_manager,
+        )
+        await self._worker_cmd_subscriber.start()
 
     async def stop(self, shutdown_timeout: float = 30.0) -> None:
         """Stop the worker gracefully.

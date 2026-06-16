@@ -12,6 +12,8 @@ import contextlib
 import os
 
 import pytest
+from nats.client import connect
+from nats.jetstream import new as new_jetstream
 
 from grctl.client import Client, Connection
 from grctl.nats.manifest import NatsManifest
@@ -32,7 +34,9 @@ async def nats_connection():
     nc = await get_nats_client([SPEC_NATS_URL])
     js = nc.jetstream()
     publisher = Publisher(nc, js, manifest)
-    conn = Connection(nc, js, manifest, publisher)
+    js_client = await connect(SPEC_NATS_URL)
+    jetstream = new_jetstream(js_client)
+    conn = Connection(nc, js, jetstream, manifest, publisher)
     yield conn
     with contextlib.suppress(Exception):
         if not nc.is_closed:
@@ -60,7 +64,7 @@ async def worker(nats_connection):
     async def start(workflows: list[Workflow]) -> Worker:
         nonlocal started, worker_task
         w = Worker(workflows=workflows, connection=nats_connection)
-        worker_task = asyncio.create_task(w.start())
+        worker_task = asyncio.create_task(w.run())
         started = w
 
         await w.wait_until_ready()

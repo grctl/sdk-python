@@ -1,13 +1,14 @@
 """Tests for Subscriber ACK on CancelledError."""
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from grctl.models import Directive, DirectiveKind, RunInfo, Start
-from grctl.nats.subscriber import Subscriber
+from grctl.nats.wf_subscriber import Subscriber
 
 
 def _make_msg() -> AsyncMock:
@@ -40,7 +41,9 @@ async def test_cancelled_error_acks_message() -> None:
     js = AsyncMock()
     manifest = MagicMock()
     run_manager = AsyncMock()
-    subscriber = Subscriber(js=js, manifest=manifest, wf_types=["TestWorkflow"], run_manager=run_manager)
+    subscriber = Subscriber(
+        js=js, manifest=manifest, wf_types=["TestWorkflow"], run_manager=run_manager, logger=logging.getLogger(__name__)
+    )
 
     msg = _make_msg()
     directive = _make_directive()
@@ -50,7 +53,7 @@ async def test_cancelled_error_acks_message() -> None:
 
     run_manager.handle_next_directive = AsyncMock(return_value=task)
 
-    with patch("grctl.nats.subscriber.directive_decoder", return_value=directive):
-        await subscriber._handle_message(msg)
+    with patch("grctl.nats.wf_subscriber.directive_decoder", return_value=directive):
+        await subscriber._process_message(msg)
 
     msg.ack.assert_awaited_once()

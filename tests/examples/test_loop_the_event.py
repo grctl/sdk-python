@@ -21,7 +21,7 @@ async def test_wait_events_example_end_to_end() -> None:
     """Run wait_events example workflow against a live server."""
     connection = await Connection.connect()
     worker = Worker(workflows=[lte], connection=connection)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
     client = Client(connection=connection)
 
     try:

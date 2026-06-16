@@ -10,6 +10,7 @@ class EngineSettings(BaseSettings):
     nats_max_reconnect_attempts: int = 10
     nats_reconnect_time_wait: float = 2.0
     nats_worker_ack_wait: float = 5.0
+    progress_ack_interval_seconds: float = 5.0
 
     model_config = SettingsConfigDict(
         env_prefix="ENGINE_",

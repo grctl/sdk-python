@@ -30,7 +30,7 @@ from grctl.models import (
     UuidRecorded,
     Wait,
 )
-from grctl.worker.logger import ReplayAwareLogger
+from grctl.worker.logger import ReplayFilter
 from grctl.worker.runtime import get_step_runtime
 from grctl.worker.store import Store
 from grctl.workflow import WorkflowHandle
@@ -173,14 +173,12 @@ class Context:
         directive: Directive,
         parent_run: RunInfo | None = None,
         step_configs: dict[str, HandlerConfig] | None = None,
-        workflow_logger: logging.Logger | None = None,
     ) -> None:
         self.run = run_info
         self._store = store
         self._worker_id = worker_id
         self._next_builder = NextBuilder(run_info, worker_id, store, directive, step_configs)
         self._parent_run = parent_run
-        self._workflow_logger = workflow_logger
         # Child handles started during this step. They are single-step-scoped: cross-step
         # coordination uses events/callbacks, not in-memory futures, so any handle still
         # open when the step returns is abandoned and gets discarded.
@@ -195,8 +193,18 @@ class Context:
         return self._next_builder
 
     @property
-    def logger(self) -> ReplayAwareLogger:
-        return ReplayAwareLogger(self.run.wf_type, self._workflow_logger)
+    def logger(self) -> logging.Logger:
+        logger = logging.getLogger(f"grctl.workflow.{self.run.wf_type}")
+        if not any(isinstance(f, ReplayFilter) for f in logger.filters):
+
+            def _is_replaying() -> bool:
+                try:
+                    return get_step_runtime().is_replaying
+                except LookupError:
+                    return False
+
+            logger.addFilter(ReplayFilter(_is_replaying))
+        return logger
 
     async def send_to_parent(self, event_name: str, payload: Any | None = None) -> None:
         """Emit an event to the parent workflow, if any."""

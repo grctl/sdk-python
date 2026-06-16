@@ -69,7 +69,7 @@ def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -113,7 +113,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -157,7 +157,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -196,7 +196,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -232,7 +232,7 @@ def _ndet_child_id_v1_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -265,7 +265,7 @@ def _ndet_child_id_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -310,7 +310,7 @@ def _run_child_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 

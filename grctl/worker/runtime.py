@@ -15,8 +15,6 @@ from grctl.worker.store import Store
 from grctl.workflow import Workflow
 
 if TYPE_CHECKING:
-    import logging
-
     from grctl.worker.context import Context
 
 _step_run_time = ContextVar("step_run_time")
@@ -50,14 +48,13 @@ _REPLAY_KINDS = frozenset(
 
 
 class StepRuntime:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         workflow: Workflow,
         worker_id: str,
         directive: Directive,
         connection: Connection,
         step_history: list[HistoryEvent] | None = None,
-        workflow_logger: "logging.Logger | None" = None,
     ) -> None:
         self.run_info = directive.run_info
         self.workflow = workflow
@@ -68,7 +65,6 @@ class StepRuntime:
         self.codec = CodecRegistry()
         self.store = self._create_store()
         self.step_history = step_history
-        self.workflow_logger = workflow_logger
         self.step_name: str
         self.parent_run = self._create_parent_run()
         self._seq: int = 0
@@ -148,7 +144,6 @@ class StepRuntime:
             directive=self.directive,
             parent_run=self.parent_run,
             step_configs=self.workflow._step_handlers,  # noqa: SLF001
-            workflow_logger=self.workflow_logger,
         )
 
     def _create_store(self) -> Store:

@@ -99,7 +99,7 @@ async def confirm_payment(ctx: Context, confirmation: PaymentConfirmation) -> Di
 async def main() -> None:
     connection = await Connection.connect()
     worker = Worker(workflows=[orders], connection=connection)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
 
     logger.info("Worker ready. Starting pydantic models workflow...")
 

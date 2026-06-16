@@ -54,13 +54,6 @@ def workflow_error_handler(func):  # noqa: ANN001, ANN201
     return wrapper
 
 
-"""
-Runner pulls the messages from NATS for a single workflow. no need for the distribution logic for now.
-It's not efficient to have multiple workers pulling messages for the same workflow run.
-But it's okay for now as we are focusing on correctness and not efficiency.
-"""
-
-
 class WorkflowRunner:
     """Orchestrates workflow run lifecycle."""
 
