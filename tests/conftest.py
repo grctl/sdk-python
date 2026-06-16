@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -10,6 +11,7 @@ from grctl.models.directive import DirectiveKind
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.publisher import Publisher
 
+logging.getLogger("nats").setLevel(logging.WARNING)
 logger = get_logger(__name__)
 
 

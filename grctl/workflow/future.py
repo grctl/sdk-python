@@ -1,12 +1,12 @@
 import asyncio
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
 import msgspec
 from nats.aio.client import Client as NATSClient
 
-from grctl.logging_config import get_logger
 from grctl.models import (
     ErrorDetails,
     HistoryEvent,
@@ -20,8 +20,6 @@ from grctl.models import (
 )
 from grctl.models.errors import WorkflowError
 from grctl.nats.history_sub import HistorySubscriber
-
-logger = get_logger(__name__)
 
 
 class WorkflowFuture(asyncio.Future[Any]):
@@ -53,6 +51,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             HistoryKind.run_cancelled: self._on_run_cancelled,
             HistoryKind.run_terminated: self._on_run_terminated,
         }
+        self._logger = logging.getLogger(f"grctl.workflow.{run_info.wf_type}")
 
     @property
     def is_started(self) -> bool:
@@ -94,14 +93,14 @@ class WorkflowFuture(asyncio.Future[Any]):
         """Process a history event from the subscription."""
         try:
             payload = json.dumps(msgspec.to_builtins(event), indent=2, sort_keys=True)
-            logger.debug(
+            self._logger.debug(
                 "Run %s received history event %s",
                 self.run_info.id,
                 payload,
             )
             handler = self._history_update_handlers.get(event.kind)
             if handler is None:
-                logger.debug(
+                self._logger.debug(
                     "Workflow %s received history event kind %s",
                     self.run_info.id,
                     event.kind,
@@ -111,12 +110,12 @@ class WorkflowFuture(asyncio.Future[Any]):
             handler(event)
 
         except Exception as e:
-            logger.exception("Error handling run event")
+            self._logger.exception("Error handling run event")
             if not self.done():
                 self.set_exception(e)
 
     def _on_non_terminal_event(self, event: HistoryEvent) -> None:
-        logger.debug(
+        self._logger.debug(
             "Run %s received non-terminal history event %s",
             self.run_info.id,
             event.kind,
@@ -127,7 +126,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             return
         payload = event.msg
         if not isinstance(payload, RunCompleted):
-            logger.error("Run %s completed event payload mismatch: %s", self.run_info.id, type(payload))
+            self._logger.error("Run %s completed event payload mismatch: %s", self.run_info.id, type(payload))
             return
         self.set_result(payload.result)
 
@@ -136,9 +135,9 @@ class WorkflowFuture(asyncio.Future[Any]):
             return
         payload = event.msg
         if not isinstance(payload, RunFailed):
-            logger.error("Run %s failed event payload mismatch: %s", self.run_info.id, type(payload))
+            self._logger.error("Run %s failed event payload mismatch: %s", self.run_info.id, type(payload))
             return
-        logger.debug("Workflow failed with error: %s", payload)
+        self._logger.debug("Workflow failed with error: %s", payload)
         error_detail = payload.error
         if not isinstance(error_detail, ErrorDetails):
             error_detail = ErrorDetails(**error_detail)
@@ -152,7 +151,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             return
         payload = event.msg
         if not isinstance(payload, RunTimeout):
-            logger.error("Run %s timeout payload mismatch: %s", self.run_info.id, type(payload))
+            self._logger.error("Run %s timeout payload mismatch: %s", self.run_info.id, type(payload))
             return
         error_msg = f"Workflow timed out after {payload.duration_ms}s"
         self.set_exception(TimeoutError(error_msg))
@@ -162,7 +161,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             return
         payload = event.msg
         if not isinstance(payload, RunCancelled):
-            logger.error("Run %s cancel payload mismatch: %s", self.run_info.id, type(payload))
+            self._logger.error("Run %s cancel payload mismatch: %s", self.run_info.id, type(payload))
             return
         self.set_exception(asyncio.CancelledError("Workflow cancelled"))
 
@@ -171,7 +170,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             return
         payload = event.msg
         if not isinstance(payload, RunTerminated):
-            logger.error("Run %s terminated payload mismatch: %s", self.run_info.id, type(payload))
+            self._logger.error("Run %s terminated payload mismatch: %s", self.run_info.id, type(payload))
             return
         self.set_exception(asyncio.CancelledError("Workflow terminated"))
 

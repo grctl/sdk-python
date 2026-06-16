@@ -75,7 +75,7 @@ def _struct_output_replay_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 

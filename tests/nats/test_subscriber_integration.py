@@ -5,17 +5,20 @@ grctl_state stream and grctl_worker_task_cons consumer already created.
 """
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 import ulid
+from nats.client import connect as nats_connect
+from nats.jetstream import new as new_jetstream
 
 from grctl.models import Directive, DirectiveKind, RunInfo, Start, directive_encoder
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
-from grctl.nats.subscriber import Subscriber
+from grctl.nats.wf_subscriber import Subscriber
 from grctl.settings import get_settings
 from grctl.worker.run_manager import RunManager
 
@@ -52,6 +55,8 @@ async def test_ack_prevents_redelivery() -> None:
     settings = get_settings()
     nc = await get_nats_client(settings.nats_servers)
     js = nc.jetstream()
+    js_client = await nats_connect(settings.nats_servers[0])
+    jetstream = new_jetstream(js_client)
     manifest = _load_manifest()
 
     # Unique wf_type per test so messages don't cross between runs
@@ -72,10 +77,11 @@ async def test_ack_prevents_redelivery() -> None:
     run_manager.handle_next_directive.side_effect = on_directive
 
     subscriber = Subscriber(
-        js=js,
+        js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
         run_manager=cast("RunManager", run_manager),
+        logger=logging.getLogger(__name__),
     )
     await subscriber.start()
 
@@ -94,6 +100,8 @@ async def test_nak_causes_redelivery() -> None:
     settings = get_settings()
     nc = await get_nats_client(settings.nats_servers)
     js = nc.jetstream()
+    js_client = await nats_connect(settings.nats_servers[0])
+    jetstream = new_jetstream(js_client)
     manifest = _load_manifest()
 
     wf_type = f"WF{ulid.ULID()}"
@@ -114,10 +122,11 @@ async def test_nak_causes_redelivery() -> None:
     run_manager.handle_next_directive.side_effect = on_directive_fail
 
     subscriber = Subscriber(
-        js=js,
+        js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
         run_manager=cast("RunManager", run_manager),
+        logger=logging.getLogger(__name__),
     )
     await subscriber.start()
 
@@ -135,6 +144,8 @@ async def test_runner_exception_acks_no_redelivery() -> None:
     settings = get_settings()
     nc = await get_nats_client(settings.nats_servers)
     js = nc.jetstream()
+    js_client = await nats_connect(settings.nats_servers[0])
+    jetstream = new_jetstream(js_client)
     manifest = _load_manifest()
 
     wf_type = f"WF{ulid.ULID()}"
@@ -154,10 +165,11 @@ async def test_runner_exception_acks_no_redelivery() -> None:
     run_manager.handle_next_directive.side_effect = on_directive_with_failing_task
 
     subscriber = Subscriber(
-        js=js,
+        js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
         run_manager=cast("RunManager", run_manager),
+        logger=logging.getLogger(__name__),
     )
     await subscriber.start()
 
@@ -178,6 +190,10 @@ async def test_queue_group_distributes_messages_across_workers() -> None:
     nc2 = await get_nats_client(settings.nats_servers)
     js1 = nc1.jetstream()
     js2 = nc2.jetstream()
+    js_client1 = await nats_connect(settings.nats_servers[0])
+    js_client2 = await nats_connect(settings.nats_servers[0])
+    jetstream1 = new_jetstream(js_client1)
+    jetstream2 = new_jetstream(js_client2)
     manifest = _load_manifest()
 
     wf_type = f"WF{ulid.ULID()}"
@@ -209,16 +225,18 @@ async def test_queue_group_distributes_messages_across_workers() -> None:
     run_manager2.handle_next_directive.side_effect = on_worker2
 
     subscriber1 = Subscriber(
-        js=js1,
+        js=jetstream1,
         manifest=manifest,
         wf_types=[wf_type],
         run_manager=cast("RunManager", run_manager1),
+        logger=logging.getLogger(__name__),
     )
     subscriber2 = Subscriber(
-        js=js2,
+        js=jetstream2,
         manifest=manifest,
         wf_types=[wf_type],
         run_manager=cast("RunManager", run_manager2),
+        logger=logging.getLogger(__name__),
     )
     await subscriber1.start()
     await subscriber2.start()

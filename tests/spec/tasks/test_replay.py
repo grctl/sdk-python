@@ -83,7 +83,7 @@ def _replay_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -116,7 +116,7 @@ def _replay_exception_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -149,7 +149,7 @@ def _replay_cancelled_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -179,7 +179,7 @@ def _ndet_input_v1_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -207,7 +207,7 @@ def _ndet_input_v2_worker(wf_type: str) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -242,7 +242,7 @@ def _ndet_v1_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -275,7 +275,7 @@ def _ndet_v2_worker(wf_type: str) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 

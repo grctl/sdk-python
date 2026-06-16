@@ -49,7 +49,7 @@ async def main() -> None:
         connection=connection,
     )
 
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
 
     logger.info("Worker is ready. Sending test request...")
 

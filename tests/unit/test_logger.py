@@ -1,12 +1,11 @@
 import contextvars
+import logging
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, Mock, patch
-
-import pytest
+from unittest.mock import AsyncMock, Mock
 
 from grctl.models import Directive, HistoryEvent, HistoryKind, TaskCompleted
 from grctl.nats.connection import Connection
-from grctl.worker.logger import ReplayAwareLogger, _is_replaying
+from grctl.worker.logger import ReplayFilter
 from grctl.worker.runtime import StepRuntime, set_step_runtime
 from grctl.workflow import Workflow
 
@@ -52,49 +51,45 @@ class TestIsReplayingProperty:
         assert runtime.is_replaying is False
 
 
-class TestIsReplayingHelper:
-    def test_false_when_no_runtime_set(self):
-        # Run in a fresh context where the ContextVar has no value
-        result = contextvars.copy_context().run(_is_replaying)
-        assert result is False
+class TestReplayFilter:
+    def _make_record(self) -> logging.LogRecord:
+        return logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="test message",
+            args=(),
+            exc_info=None,
+        )
 
-    def test_true_when_replaying(self):
+    def test_allows_when_not_replaying(self):
+        f = ReplayFilter(is_replaying=lambda: False)
+        assert f.filter(self._make_record()) is True
+
+    def test_suppresses_when_replaying(self):
+        f = ReplayFilter(is_replaying=lambda: True)
+        assert f.filter(self._make_record()) is False
+
+    def test_filter_reflects_runtime_state(self):
         runtime = _make_runtime(step_history=[_make_event("op-1")])
         set_step_runtime(runtime)
-        assert _is_replaying() is True
+        f = ReplayFilter(is_replaying=lambda: runtime.is_replaying)
 
-    def test_false_when_not_replaying(self):
-        runtime = _make_runtime(step_history=[])
-        set_step_runtime(runtime)
-        assert _is_replaying() is False
+        assert f.filter(self._make_record()) is False  # replaying
 
+        runtime._cursor = 1
+        assert f.filter(self._make_record()) is True  # past history
 
-class TestReplayAwareLogger:
-    def setup_method(self):
-        self.logger = ReplayAwareLogger("order_wf")
+    def test_filter_false_when_no_runtime(self):
+        def safe_check() -> bool:
+            try:
+                from grctl.worker.runtime import get_step_runtime  # noqa: PLC0415
 
-    def test_logger_name(self):
-        assert self.logger._logger.name == "grctl.workflow.order_wf"
+                return get_step_runtime().is_replaying
+            except LookupError:
+                return False
 
-    @pytest.mark.parametrize("method", ["debug", "info", "warning", "error", "critical", "exception"])
-    def test_suppressed_during_replay(self, method: str):
-        runtime = _make_runtime(step_history=[_make_event("op-1")])
-        set_step_runtime(runtime)
-        with patch.object(self.logger._logger, method) as mock_method:
-            getattr(self.logger, method)("test message")
-            mock_method.assert_not_called()
-
-    @pytest.mark.parametrize("method", ["debug", "info", "warning", "error", "critical"])
-    def test_forwarded_when_not_replaying(self, method: str):
-        runtime = _make_runtime(step_history=[])
-        set_step_runtime(runtime)
-        with patch.object(self.logger._logger, method) as mock_method:
-            getattr(self.logger, method)("test message")
-            mock_method.assert_called_once_with("test message")
-
-    def test_exception_forwarded_when_not_replaying(self):
-        runtime = _make_runtime(step_history=[])
-        set_step_runtime(runtime)
-        with patch.object(self.logger._logger, "exception") as mock_method:
-            self.logger.exception("test error")
-            mock_method.assert_called_once_with("test error")
+        f = ReplayFilter(is_replaying=safe_check)
+        result = contextvars.copy_context().run(f.filter, self._make_record())
+        assert result is True  # no runtime → not replaying → allow

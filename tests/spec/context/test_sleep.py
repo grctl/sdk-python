@@ -1,6 +1,7 @@
 """Spec tests: ctx.sleep() deterministic replay."""
 
 import asyncio
+import logging
 import multiprocessing
 import os
 from datetime import timedelta
@@ -21,6 +22,7 @@ _WORKER_INIT_DELAY = 0.5
 _HISTORY_TIMEOUT = 15.0
 _WORKFLOW_TIMEOUT = timedelta(seconds=120)
 _REPLAY_WORKER_ACK_WAIT_SECONDS = "0.5"
+_REPLAY_WORKER_PROGRESS_ACK_INTERVAL_SECONDS = "0.2"
 
 # Sleep duration long enough to detect if replay fails to skip it.
 _SLEEP_DURATION = timedelta(seconds=5)
@@ -28,6 +30,8 @@ _SLEEP_DURATION_MS = int(_SLEEP_DURATION.total_seconds() * 1000)
 
 # Replay must complete well under the sleep duration.
 _REPLAY_TIMEOUT = 3.0
+
+logger = logging.getLogger(__name__)
 
 
 def _terminate(process: multiprocessing.Process) -> None:
@@ -42,6 +46,7 @@ def _terminate(process: multiprocessing.Process) -> None:
 def _sleep_replay_worker(wf_type: str, pause_event=None) -> None:
     async def run() -> None:
         os.environ.setdefault("ENGINE_NATS_WORKER_ACK_WAIT", _REPLAY_WORKER_ACK_WAIT_SECONDS)
+        os.environ.setdefault("ENGINE_PROGRESS_ACK_INTERVAL_SECONDS", _REPLAY_WORKER_PROGRESS_ACK_INTERVAL_SECONDS)
         nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
 
         wf = Workflow(workflow_type=wf_type)
@@ -59,7 +64,7 @@ def _sleep_replay_worker(wf_type: str, pause_event=None) -> None:
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
-        await wk.start()
+        await wk.run()
 
     asyncio.run(run())
 
@@ -79,8 +84,11 @@ async def test_sleep_is_skipped_on_replay(grctl_client) -> None:
     try:
         history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
         await history.wait_for_kind(HistoryKind.sleep_recorded)
+        logger.info("Sleep recorded, terminating worker_a")
         _terminate(worker_a)
+        logger.info("Starting worker_b")
         worker_b.start()
+        logger.info("Waiting for worker_b to start")
         await asyncio.sleep(_WORKER_INIT_DELAY)
 
         # If sleep is not skipped on replay, this will timeout before the workflow completes.

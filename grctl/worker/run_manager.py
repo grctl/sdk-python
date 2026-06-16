@@ -1,11 +1,11 @@
 import asyncio
-import logging
 from typing import TYPE_CHECKING
 
 from grctl.logging_config import get_logger
 from grctl.models import HistoryEvent
 from grctl.models.directive import Directive
 from grctl.nats.history_fetch import fetch_step_history
+from grctl.nats.wf_subscriber import WorkflowStepAlreadyExecutedError
 from grctl.worker.runner import WorkflowRunner
 from grctl.worker.runtime import StepRuntime
 from grctl.workflow.workflow import Workflow
@@ -29,13 +29,11 @@ class RunManager:
         worker_id: str,
         workflows: list[Workflow],
         connection: "Connection",
-        workflow_logger: logging.Logger | None = None,
     ) -> None:
         self._worker_name = worker_name
         self._worker_id = worker_id
         self._workflows = {wf.workflow_type: wf for wf in workflows}
         self._connection = connection
-        self._workflow_logger = workflow_logger
         self._runner_tasks: dict[str, asyncio.Task] = {}
 
     def is_running(self, run_id: str) -> bool:
@@ -49,7 +47,7 @@ class RunManager:
         """Get list of workflow types managed by this RunManager."""
         return list(self._workflows.keys())
 
-    async def handle_next_directive(self, directive: Directive) -> asyncio.Task | None:
+    async def handle_next_directive(self, directive: Directive) -> asyncio.Task:
         """Initialize and start directive handling.
 
         Raises ValueError if the workflow type is not registered — caller should NAK the message.
@@ -71,14 +69,13 @@ class RunManager:
             directive=directive,
             connection=self._connection,
             step_history=step_history,
-            workflow_logger=self._workflow_logger,
         )
 
         runner = WorkflowRunner(runtime)
 
         return self._start_task(runner, directive)
 
-    def _start_task(self, runner: WorkflowRunner, directive: Directive) -> asyncio.Task | None:
+    def _start_task(self, runner: WorkflowRunner, directive: Directive) -> asyncio.Task:
         """Start a tracked asyncio task for the runner.
 
         Returns None if the run_id is already executing (duplicate message).
@@ -87,7 +84,7 @@ class RunManager:
 
         if self.is_running(run_id):
             logger.warning(f"Workflow run {run_id} is already executing, skipping")
-            return None
+            raise WorkflowStepAlreadyExecutedError(f"Workflow run {run_id} is already executing")
 
         task = asyncio.create_task(self._run_with_cleanup(runner, directive))
         self._runner_tasks[run_id] = task
@@ -117,15 +114,15 @@ class RunManager:
             await runner.handle_directive(directive)
         finally:
             self._runner_tasks.pop(run_id, None)
-            logger.debug(f"Cleaned up runner task for run_id={run_id}")
+            logger.debug(f"Cleaned up runner job for run_id={run_id}")
 
     def terminate_run(self, run_id: str) -> bool:
-        """Cancel an in-flight run task. Returns True if the task was found and cancelled."""
+        """Cancel an in-flight run job. Returns True if the task was found and cancelled."""
         task = self._runner_tasks.get(run_id)
         if task is None:
             return False
 
-        logger.debug(f"Terminating runner task for run_id={run_id}")
+        logger.debug(f"Terminating worker job for run_id={run_id}")
         task.cancel()
         return True
 

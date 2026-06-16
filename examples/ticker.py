@@ -48,7 +48,7 @@ async def run_worker() -> None:
     worker = Worker(workflows=[ticker], connection=connection)
 
     try:
-        await worker.start()
+        await worker.run()
     except asyncio.CancelledError:
         logger.info("Worker stopped.")
         await worker.stop()

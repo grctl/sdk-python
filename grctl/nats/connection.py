@@ -1,4 +1,7 @@
 from nats.aio.client import Client as NATSClient
+from nats.client import connect
+from nats.jetstream import JetStream
+from nats.jetstream import new as new_jetstream
 from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
@@ -13,9 +16,12 @@ logger = get_logger(__name__)
 class Connection:
     _instance: "Connection | None" = None
 
-    def __init__(self, nc: NATSClient, js: JetStreamContext, manifest: NatsManifest, publisher: Publisher) -> None:
+    def __init__(
+        self, nc: NATSClient, js: JetStreamContext, jetstream: JetStream, manifest: NatsManifest, publisher: Publisher
+    ) -> None:
         self._nc = nc
         self._js = js
+        self._jetstream = jetstream
         self._manifest = manifest
         self._publisher = publisher
 
@@ -32,13 +38,15 @@ class Connection:
             nc = await get_nats_client(servers)
             js = nc.jetstream()
             publisher = Publisher(nc, js, manifest)
+            js_client = await connect(servers[0])
+            jetstream = new_jetstream(js_client)
 
             logger.debug("NATS connection established and components initialized")
         except Exception:
             logger.exception("Failed to establish Connection")
             raise
 
-        instance = cls(nc, js, manifest, publisher)
+        instance = cls(nc, js, jetstream, manifest, publisher)
         cls._instance = instance
         return instance
 
@@ -57,6 +65,10 @@ class Connection:
     @property
     def manifest(self) -> NatsManifest:
         return self._manifest
+
+    @property
+    def jetstream(self) -> JetStream:
+        return self._jetstream
 
     @property
     def publisher(self) -> Publisher:

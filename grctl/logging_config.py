@@ -7,7 +7,7 @@ import sys
 class CustomFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         # Format: LEVEL TIME METHOD:LINE_NUM MESSAGE
-        timestamp = self.formatTime(record, "%H:%M:%S")
+        timestamp = self.formatTime(record, "%H:%M:%S") + f".{record.msecs:03.0f}"
 
         level = record.levelname
 
@@ -37,6 +37,8 @@ def setup_logging(level: int = logging.INFO) -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
     root_logger.addHandler(handler)
+
+    logging.getLogger("nats").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

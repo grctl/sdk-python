@@ -1,12 +1,14 @@
 import asyncio
+import logging
 from contextlib import AbstractContextManager
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from nats.js.api import ConsumerConfig
+from nats.jetstream.consumer import ConsumerConfig
 
 from grctl.nats.connection import Connection
-from grctl.nats.subscriber import Subscriber
+from grctl.nats.wf_subscriber import Subscriber
 from grctl.worker.errors import RegistrationError
 from grctl.worker.worker import Worker
 from grctl.workflow.workflow import Workflow
@@ -31,6 +33,7 @@ def _patch_registration() -> AbstractContextManager[AsyncMock]:
 def _make_connection() -> AsyncMock:
     connection = AsyncMock(spec=Connection)
     connection.js = AsyncMock()
+    connection.jetstream = AsyncMock()
     connection.manifest = MagicMock()
     connection.publisher = AsyncMock()
     connection.nc = AsyncMock()
@@ -50,7 +53,7 @@ async def test_subscribe_called_with_wf_types() -> None:
         _patch_registration(),
     ):
         worker._stop_event.set()
-        await worker.start()
+        await worker.run()
 
     mock_subscriber_cls.assert_called_once()
     call_kwargs = mock_subscriber_cls.call_args.kwargs
@@ -60,26 +63,35 @@ async def test_subscribe_called_with_wf_types() -> None:
 
 @pytest.mark.asyncio
 async def test_subscriber_uses_configured_worker_ack_wait() -> None:
+    manifest = MagicMock()
+    manifest.worker_task_filter_subject.return_value = "grctl_worker_task.wf_type_a.>"
+    manifest.worker_task_queue_group.return_value = "grctl_worker_wf_type_a"
+    manifest.state_stream_name.return_value = "grctl_state"
 
-    connection = _make_connection()
-    connection.manifest.worker_task_filter_subject.return_value = "grctl_worker_task.wf_type_a.>"
-    connection.manifest.worker_task_queue_group.return_value = "grctl_worker_wf_type_a"
-    connection.js.subscribe = AsyncMock()
+    consumer = AsyncMock()
+    consumer.messages = AsyncMock(return_value=AsyncMock(__aiter__=lambda s: iter([])))
+    stream = AsyncMock()
+    stream.create_or_update_consumer = AsyncMock(return_value=consumer)
+    js = AsyncMock()
+    js.get_stream = AsyncMock(return_value=stream)
 
-    with patch("grctl.nats.subscriber.get_settings") as mock_get_settings:
+    with patch("grctl.nats.wf_subscriber.get_settings") as mock_get_settings:
         mock_get_settings.return_value.nats_worker_ack_wait = 7.5
+        mock_get_settings.return_value.progress_ack_interval_seconds = 5
         subscriber = Subscriber(
-            js=connection.js,
-            manifest=connection.manifest,
+            js=js,
+            manifest=manifest,
             wf_types=["wf_type_a"],
             run_manager=AsyncMock(),
+            logger=logging.getLogger(__name__),
         )
 
         await subscriber.start()
 
-    subscribe_kwargs = connection.js.subscribe.await_args.kwargs  # ty:ignore[unresolved-attribute]
-    assert isinstance(subscribe_kwargs["config"], ConsumerConfig)
-    assert subscribe_kwargs["config"].ack_wait == 7.5
+    assert stream.create_or_update_consumer.await_args is not None
+    config = stream.create_or_update_consumer.await_args.args[0]
+    assert isinstance(config, ConsumerConfig)
+    assert config.ack_wait == timedelta(seconds=7.5)
 
 
 @pytest.mark.asyncio
@@ -91,7 +103,7 @@ async def test_wait_until_ready_returns_after_startup() -> None:
     mock_subscriber = AsyncMock()
 
     with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber), _patch_registration():
-        start_task = asyncio.create_task(worker.start())
+        start_task = asyncio.create_task(worker.run())
         await worker.wait_until_ready()
         await worker.stop()
         await start_task
@@ -108,7 +120,7 @@ async def test_wait_until_ready_propagates_startup_failure() -> None:
     mock_subscriber.start.side_effect = startup_error
 
     with patch("grctl.worker.worker.Subscriber", return_value=mock_subscriber), _patch_registration():
-        start_task = asyncio.create_task(worker.start())
+        start_task = asyncio.create_task(worker.run())
 
         with pytest.raises(RuntimeError, match="boom"):
             await worker.wait_until_ready()
@@ -132,7 +144,7 @@ async def test_worker_cmd_subscriber_lifecycle() -> None:
         patch("grctl.worker.worker.WorkerCmdSubscriber", return_value=mock_cmd_subscriber),
         _patch_registration(),
     ):
-        start_task = asyncio.create_task(worker.start())
+        start_task = asyncio.create_task(worker.run())
         await worker.wait_until_ready()
 
         mock_cmd_subscriber.start.assert_called_once()
@@ -158,7 +170,7 @@ async def test_registration_failure_aborts_before_subscribing() -> None:
         ),
         pytest.raises(RegistrationError, match="registration exhausted"),
     ):
-        await worker.start()
+        await worker.run()
 
     # Fail-fast: the worker must not subscribe to task subjects when it cannot register.
     mock_subscriber_cls.assert_not_called()

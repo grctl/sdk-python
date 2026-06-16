@@ -1,18 +1,16 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from ulid import ULID
 
-from grctl.logging_config import get_logger
 from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd, TerminateCmd
 from grctl.worker.codec import CodecRegistry
 from grctl.workflow.future import WorkflowFuture
 
 if TYPE_CHECKING:
     from grctl.nats.connection import Connection
-
-logger = get_logger(__name__)
 
 _T = TypeVar("_T")
 
@@ -33,11 +31,12 @@ class WorkflowHandle:
         self._codec = codec or CodecRegistry()
         self._return_type = return_type
         self._sender_id = sender_id
+        self._logger = logging.getLogger(f"grctl.workflow.{run_info.wf_type}")
         self.future = WorkflowFuture(run_info, connection.nc, payload)
 
     async def attach(self) -> None:
         """Attach to an existing workflow run by starting the future subscription only."""
-        logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
+        self._logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
         await self.future.start()
 
     async def start(self) -> bytes:
@@ -53,9 +52,11 @@ class WorkflowHandle:
             ),
             sender_id=self._sender_id,
         )
-        logger.debug("Starting workflow history listener")
+        self._logger.debug("Starting workflow history listener")
         await self.future.start()
-        logger.debug("Publishing start command for workflow %s ", cmd)
+        self._logger.debug(
+            "Publishing start command for wf_type=%s wf_id=%s", self.run_info.wf_type, self.run_info.wf_id
+        )
         return await self._connection.publisher.publish_cmd(self.run_info, cmd)
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
@@ -71,7 +72,7 @@ class WorkflowHandle:
             ),
             sender_id=self._sender_id,
         )
-        logger.debug("Publishing event command for workflow %s", cmd)
+        self._logger.debug("Publishing event command for workflow %s", cmd)
         await self._connection.publisher.publish_cmd(self.run_info, cmd)
 
     @overload

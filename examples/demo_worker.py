@@ -21,7 +21,7 @@ async def main() -> None:
     connection = await Connection.connect()
     worker = Worker(workflows=[hello, payment_wf], connection=connection)
     logger.info("Worker started — registered workflows: Hello, Payment")
-    await worker.start()
+    await worker.run()
 
 
 if __name__ == "__main__":

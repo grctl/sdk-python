@@ -16,7 +16,7 @@ async def test_hello_world_example_end_to_end() -> None:
     """Run hello_world example workflow against a live server."""
     connection = await Connection.connect()
     worker = Worker(workflows=[hello], connection=connection)
-    worker_task = asyncio.create_task(worker.start())
+    worker_task = asyncio.create_task(worker.run())
     client = Client(connection=connection)
 
     try:

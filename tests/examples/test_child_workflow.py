@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 async def test_child_workflow_example_end_to_end() -> None:
     """Run child_workflow example workflow against a live server."""
     connection = await Connection.connect()
-    worker = Worker(workflows=[order_wf, payment_wf], connection=connection, workflow_logger=logger)
-    worker_task = asyncio.create_task(worker.start())
+    worker = Worker(workflows=[order_wf, payment_wf], connection=connection)
+    worker_task = asyncio.create_task(worker.run())
     client = Client(connection=connection)
 
     try:

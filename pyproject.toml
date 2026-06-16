@@ -24,12 +24,15 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "nats-py>=2.7.0",
+    "nats-py>=2.15.0",
     "msgspec>=0.18.0",
     "python-ulid>=2.0.0",
     "pydantic-settings>=2.11.0",
     "pyyaml>=6.0.3",
     "pydantic>=2.12.5",
+    "nats-jetstream>=0.3.0",
+    "nats-core>=0.2.0",
+    "nkeys>=0.2.1",
 ]
 
 [project.urls]
