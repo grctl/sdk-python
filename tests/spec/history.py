@@ -9,7 +9,7 @@ from grctl.client import Client
 from grctl.models import HistoryEvent, HistoryKind, history_decoder
 
 _POLL_INTERVAL = 0.1
-_DEFAULT_TIMEOUT = 5.0
+_DEFAULT_TIMEOUT = 10.0
 
 _RUN_KINDS = frozenset(
     {
