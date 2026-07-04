@@ -129,6 +129,17 @@ class WorkflowRunner:
 
         try:
             directive = await self._invoke_handler(ctx, handler_config, payload)
+            if not isinstance(directive, Directive):
+                raise NextDirectiveMissingError(
+                    f"Step did not return a Directive. {directive=}", self.runtime.step_name
+                )
+            step_name = directive.msg.step_name if isinstance(directive.msg, Step) else None
+            logger.info(
+                "Publishing next directive: directive_id=%s, kind=%s, step_name=%s",
+                directive.id,
+                directive.kind,
+                step_name,
+            )
             await self._publish_next_directive(directive, start_time)
         finally:
             # Always release child handles started in this step, even when the handler

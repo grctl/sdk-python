@@ -39,8 +39,8 @@ def _make_runtime(workflow: Workflow, step_history: list[HistoryEvent] | None = 
         connection=AsyncMock(spec=Connection),
         step_history=step_history if step_history is not None else [],
     )
-    runtime.publisher.publish_history = AsyncMock()  # ty:ignore[invalid-assignment]
-    runtime.publisher.publish_next_directive = AsyncMock()  # ty:ignore[invalid-assignment]
+    runtime.publisher.publish_history = AsyncMock()
+    runtime.publisher.publish_next_directive = AsyncMock()
     runtime.step_name = "my_step"
     return runtime
 

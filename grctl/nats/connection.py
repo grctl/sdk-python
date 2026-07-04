@@ -38,7 +38,13 @@ class Connection:
             nc = await get_nats_client(servers)
             js = nc.jetstream()
             publisher = Publisher(nc, js, manifest)
-            js_client = await connect(servers[0])
+            settings = get_settings()
+            js_client = await connect(
+                servers[0],
+                reconnect_max_attempts=0,
+                reconnect_time_wait=settings.nats_reconnect_time_wait,
+                reconnect_timeout=settings.nats_connect_timeout,
+            )
             jetstream = new_jetstream(js_client)
 
             logger.debug("NATS connection established and components initialized")

@@ -1,8 +1,9 @@
 import asyncio
+import json
 from typing import TYPE_CHECKING
 
 from grctl.logging_config import get_logger
-from grctl.models import HistoryEvent
+from grctl.models import HistoryEvent, Step
 from grctl.models.directive import Directive
 from grctl.nats.history_fetch import fetch_step_history
 from grctl.nats.wf_subscriber import WorkflowStepAlreadyExecutedError
@@ -35,6 +36,7 @@ class RunManager:
         self._workflows = {wf.workflow_type: wf for wf in workflows}
         self._connection = connection
         self._runner_tasks: dict[str, asyncio.Task] = {}
+        self._runner_directives: dict[str, Directive] = {}
 
     def is_running(self, run_id: str) -> bool:
         """Check if a workflow run is currently executing."""
@@ -73,7 +75,9 @@ class RunManager:
 
         runner = WorkflowRunner(runtime)
 
-        return self._start_task(runner, directive)
+        task = self._start_task(runner, directive)
+        await self._publish_metrics()
+        return task
 
     def _start_task(self, runner: WorkflowRunner, directive: Directive) -> asyncio.Task:
         """Start a tracked asyncio task for the runner.
@@ -83,18 +87,50 @@ class RunManager:
         run_id = runner.runtime.run_info.id
 
         if self.is_running(run_id):
-            logger.warning(f"Workflow run {run_id} is already executing, skipping")
+            step_name = directive.msg.step_name if isinstance(directive.msg, Step) else None
+            logger.warning(
+                "Workflow run %s is already executing, skipping directive:%s, kind:%s, attempt:%s, step_name: %s",
+                run_id,
+                directive.id,
+                directive.kind,
+                directive.attempt,
+                step_name,
+            )
+            current_directive = self._runner_directives.get(run_id)
+            if current_directive is not None:
+                step_name = current_directive.msg.step_name if isinstance(current_directive.msg, Step) else None
+                logger.warning(
+                    "Current running run_id: %s directive_id: %s, kind: %s, attempt: %s step_name: %s",
+                    run_id,
+                    current_directive.id,
+                    current_directive.kind,
+                    current_directive.attempt,
+                    step_name,
+                )
+            else:
+                logger.warning("No current directive found for run_id: %s", run_id)
             raise WorkflowStepAlreadyExecutedError(f"Workflow run {run_id} is already executing")
 
         task = asyncio.create_task(self._run_with_cleanup(runner, directive))
         self._runner_tasks[run_id] = task
-        logger.debug(f"Started workflow runner task for run_id={run_id}")
+        self._runner_directives[run_id] = directive
+
+        step_name = directive.msg.step_name if isinstance(directive.msg, Step) else None
+        logger.info(
+            "Started workflow runner task for run_id: %s, directive_id: %s, kind: %s, step_name: %s, attempt: %s",
+            run_id,
+            directive.id,
+            directive.kind,
+            step_name,
+            directive.attempt,
+        )
         return task
 
     async def _load_step_history(self, directive: Directive) -> list[HistoryEvent]:
         if directive.attempt <= 0:
             return []
 
+        # As a hard rule, run_info.history_seq_id always starts after the previous step completion
         history_seq_id = directive.run_info.history_seq_id
         if history_seq_id <= 0:
             return []
@@ -114,7 +150,20 @@ class RunManager:
             await runner.handle_directive(directive)
         finally:
             self._runner_tasks.pop(run_id, None)
-            logger.debug(f"Cleaned up runner job for run_id={run_id}")
+            self._runner_directives.pop(run_id, None)
+            await self._publish_metrics()
+            step_name = directive.msg.step_name if isinstance(directive.msg, Step) else None
+            logger.debug(
+                "Cleaned up runner job for run_id: %s directive_id: %s, directive kind: %s, step_name: %s",
+                run_id,
+                directive.id,
+                directive.kind,
+                step_name,
+            )
+
+    def get_runner_task(self, run_id: str) -> asyncio.Task | None:
+        """Return the in-flight task for a run, or None if not running."""
+        return self._runner_tasks.get(run_id)
 
     def terminate_run(self, run_id: str) -> bool:
         """Cancel an in-flight run job. Returns True if the task was found and cancelled."""
@@ -136,3 +185,16 @@ class RunManager:
     def get_running_count(self) -> int:
         """Get number of currently running workflow tasks."""
         return len(self._runner_tasks)
+
+    async def _publish_metrics(self) -> None:
+        payload = json.dumps(
+            {
+                "worker_name": self._worker_name,
+                "active_steps": len(self._runner_tasks),
+            }
+        ).encode()
+        subject = f"grctl.worker.{self._worker_id}.metrics"
+        try:
+            await self._connection.nc.publish(subject, payload)
+        except Exception:
+            logger.debug("Failed to publish worker metrics")
