@@ -7,9 +7,10 @@ class EngineSettings(BaseSettings):
     nats_servers: list[str] = ["nats://localhost:4225"]
     nats_connect_timeout: float = 2.0
     nats_request_timeout: float = 5.0
-    nats_max_reconnect_attempts: int = 10
+    nats_max_reconnect_attempts: int = -1
     nats_reconnect_time_wait: float = 2.0
-    nats_worker_ack_wait: float = 5.0
+    nats_fetch_max_wait: float = 5.0
+    nats_worker_ack_wait: float = 8.0
     progress_ack_interval_seconds: float = 5.0
 
     model_config = SettingsConfigDict(
