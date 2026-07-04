@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.3.0...grctl-sdk-python-v0.4.0) (2026-07-04)
+
+
+### Features
+
+* add otel metrics ([#31](https://github.com/grctl/sdk-python/issues/31)) ([e08ac0c](https://github.com/grctl/sdk-python/commit/e08ac0cf9368feb1362a4b35f24ac16ccd39527a))
+
+
+### Bug Fixes
+
+* workflow subscriber ([#28](https://github.com/grctl/sdk-python/issues/28)) ([9575268](https://github.com/grctl/sdk-python/commit/957526828cb2ac3425ec92ef8a8be73d199d86c0))
+
 ## [0.3.0](https://github.com/grctl/sdk-python/compare/grctl-sdk-python-v0.2.1...grctl-sdk-python-v0.3.0) (2026-06-07)
 
 
