@@ -69,7 +69,6 @@ async def test_subscriber_uses_configured_worker_ack_wait() -> None:
     manifest.state_stream_name.return_value = "grctl_state"
 
     consumer = AsyncMock()
-    consumer.messages = AsyncMock(return_value=AsyncMock(__aiter__=lambda s: iter([])))
     stream = AsyncMock()
     stream.create_or_update_consumer = AsyncMock(return_value=consumer)
     js = AsyncMock()
@@ -86,7 +85,7 @@ async def test_subscriber_uses_configured_worker_ack_wait() -> None:
             logger=logging.getLogger(__name__),
         )
 
-        await subscriber.start()
+        await subscriber._create_consumer("wf_type_a")
 
     assert stream.create_or_update_consumer.await_args is not None
     config = stream.create_or_update_consumer.await_args.args[0]

@@ -39,7 +39,7 @@ class TestStepRuntime:
     async def test_record(self):
         runtime = _make_runtime()
         publish_history = AsyncMock()
-        runtime.publisher.publish_history = publish_history  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_history = publish_history
         await runtime.record(HistoryKind.run_started, RunStarted(), operation_id="")
 
         publish_history.assert_called_once()
@@ -48,7 +48,7 @@ class TestStepRuntime:
     async def test_record_publishes_event_with_operation_id(self):
         runtime = _make_runtime()
         publish_history = AsyncMock()
-        runtime.publisher.publish_history = publish_history  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_history = publish_history
 
         msg = TaskCompleted(task_id="t-1", task_name="fetch", output={"result": 42}, step_name="s", duration_ms=10)
         await runtime.record(HistoryKind.task_completed, msg, operation_id="fetch:abc123")
@@ -68,7 +68,7 @@ class TestStepRuntime:
     # Test 6: Seq counter increments only on generate_operation_id, not next() or record()
     async def test_seq_increments_on_generate_operation_id(self):
         runtime = _make_runtime()
-        runtime.publisher.publish_history = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_history = AsyncMock()
 
         assert runtime._seq == 0
 

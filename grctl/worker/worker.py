@@ -44,10 +44,12 @@ class Worker:
         self,
         workflows: list[Workflow],
         connection: Connection,
+        name: str | None = None,
     ) -> None:
         """Initialize the worker."""
         self._workflows = workflows
         self._connection = connection
+        self._name = name
         self._stop_event = asyncio.Event()
         self._startup_event = asyncio.Event()
         self._subscriber: Subscriber | None = None
@@ -57,11 +59,13 @@ class Worker:
 
     @cached_property
     def worker_name(self) -> str:
-        """Stable identifier shared across all instances with the same workflow set.
+        """Human-readable name for this worker instance.
 
-        Derived from MD5 of sorted workflow type names — identical across processes
-        with the same registered workflows.
+        Uses the explicit name if provided, otherwise derives a stable identifier
+        from MD5 of sorted workflow type names.
         """
+        if self._name:
+            return self._name
         workflow_types = sorted([wf.workflow_type for wf in self._workflows])
         types_str = "|".join(workflow_types)
         hash_digest = hashlib.md5(types_str.encode()).hexdigest()

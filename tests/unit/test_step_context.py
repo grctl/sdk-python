@@ -46,7 +46,7 @@ def _setup_runtime(step_history: list[HistoryEvent]) -> StepRuntime:
         connection=AsyncMock(spec=Connection),
         step_history=step_history,
     )
-    runtime.publisher.publish_history = AsyncMock()  # ty:ignore[invalid-assignment]
+    runtime.publisher.publish_history = AsyncMock()
     set_step_runtime(runtime)
     return runtime
 
@@ -170,7 +170,7 @@ class TestStart:
     # Test 1: live path — generates run_id, calls handle.start(), records ChildWorkflowStarted
     async def test_live_execution_generates_run_id_and_records(self) -> None:
         runtime = _setup_runtime([])
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
         ctx = _make_ctx()
 
         with patch("grctl.worker.context.WorkflowHandle") as mock_handle_cls:
@@ -239,7 +239,7 @@ class TestStart:
     # Test 4: two ctx.start_child() calls with same wf_type + wf_id produce different operation_ids (seq tiebreaker)
     async def test_two_identical_starts_produce_different_operation_ids(self) -> None:
         runtime = _setup_runtime([])
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
         ctx = _make_ctx()
 
         ids: list[str] = []
@@ -266,14 +266,14 @@ class TestSendToParent:
     # Test 5: live path — publishes command and records ParentEventSent
     async def test_live_execution_publishes_and_records(self) -> None:
         runtime = _setup_runtime([])
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
         parent_run = Mock(spec=RunInfo)
         parent_run.wf_id = "parent-wf"
         ctx = _make_ctx(parent_run=parent_run)
 
         await ctx.send_to_parent("order.completed", {"order_id": "42"})
 
-        runtime.publisher.publish_cmd.assert_called_once()  # ty:ignore[unresolved-attribute]
+        runtime.publisher.publish_cmd.assert_called_once()
         runtime.publisher.publish_history.assert_called_once()  # ty:ignore[unresolved-attribute]
         event = runtime.publisher.publish_history.call_args.kwargs["event"]  # ty:ignore[unresolved-attribute]
         assert event.kind == HistoryKind.parent_event_sent
@@ -301,13 +301,13 @@ class TestSendToParent:
             )
         ]
         runtime = _setup_runtime(history)
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
 
         ctx = _make_ctx(parent_run=parent_run)
 
         await ctx.send_to_parent("order.completed")
 
-        runtime.publisher.publish_cmd.assert_not_called()  # ty:ignore[unresolved-attribute]
+        runtime.publisher.publish_cmd.assert_not_called()
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
 
     # Test 7: kind mismatch raises NonDeterminismError
@@ -320,7 +320,7 @@ class TestSendToParent:
             _make_event(HistoryKind.timestamp_recorded, TimestampRecorded(value=datetime.now(UTC)), operation_id)
         ]
         runtime = _setup_runtime(history)
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
         parent_run = Mock(spec=RunInfo)
         parent_run.wf_id = "parent-wf"
         ctx = _make_ctx(parent_run=parent_run)
@@ -367,7 +367,7 @@ class TestSequentialReplay:
             ),
         ]
         runtime = _setup_runtime(history)
-        runtime.publisher.publish_cmd = AsyncMock()  # ty:ignore[invalid-assignment]
+        runtime.publisher.publish_cmd = AsyncMock()
 
         ctx = _make_ctx(parent_run=parent_run)
 
@@ -378,7 +378,7 @@ class TestSequentialReplay:
             await ctx.send_to_parent("started")
 
         mock_handle.start.assert_not_called()
-        runtime.publisher.publish_cmd.assert_not_called()  # ty:ignore[unresolved-attribute]
+        runtime.publisher.publish_cmd.assert_not_called()
         runtime.publisher.publish_history.assert_not_called()  # ty:ignore[unresolved-attribute]
 
     # Test 10: ctx.start_child() after ctx.now() resolves at correct cursor position

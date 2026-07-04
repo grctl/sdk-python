@@ -1,11 +1,14 @@
 import dataclasses
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import msgspec
 import pytest
 from pydantic import BaseModel
 
+from grctl.models import Complete, Directive, DirectiveKind
 from grctl.worker.codec import CodecRegistry
+from grctl.worker.errors import NextDirectiveMissingError
 from grctl.worker.runner import WorkflowRunner
 from grctl.worker.runtime import _step_run_time
 from grctl.workflow.workflow import HandlerConfig, HandlerSpec
@@ -13,6 +16,16 @@ from grctl.workflow.workflow import HandlerConfig, HandlerSpec
 
 def make_config(handler, params):
     return HandlerConfig(handler=handler, spec=HandlerSpec(params=params))
+
+
+def make_directive(runner):
+    return Directive(
+        id="dir-1",
+        timestamp=datetime.now(UTC),
+        kind=DirectiveKind.complete,
+        run_info=runner.runtime.run_info,
+        msg=Complete(result=None),
+    )
 
 
 @pytest.fixture
@@ -34,6 +47,7 @@ async def test_no_params_calls_handler_with_ctx_only(runner):
 
     async def handler(ctx):
         received["called"] = True
+        return make_directive(runner)
 
     with patch.object(runner, "_publish_next_directive", new=AsyncMock()):
         await runner._execute_step(make_config(handler, {}), None)
@@ -48,6 +62,7 @@ async def test_multiple_typed_params_each_received_correctly(runner):
     async def handler(ctx, name: str, count: int):
         received["name"] = name
         received["count"] = count
+        return make_directive(runner)
 
     with patch.object(runner, "_publish_next_directive", new=AsyncMock()):
         await runner._execute_step(
@@ -69,6 +84,15 @@ async def test_missing_required_param_raises_key_error(runner):
 
 
 @pytest.mark.asyncio
+async def test_missing_directive_return_raises_next_directive_missing_error(runner):
+    async def handler(ctx):
+        return None
+
+    with pytest.raises(NextDirectiveMissingError, match="did not return a NextDirective"):
+        await runner._execute_step(make_config(handler, {}), None)
+
+
+@pytest.mark.asyncio
 async def test_wrong_type_raises_validation_error(runner):
     # Multi-param: wrong type for a key raises ValidationError
     async def handler(ctx, x: int, y: str): ...
@@ -87,6 +111,7 @@ async def test_single_pydantic_param_receives_instance(runner):
 
     async def handler(ctx, user: UserModel):
         received["user"] = user
+        return make_directive(runner)
 
     with patch.object(runner, "_publish_next_directive", new=AsyncMock()):
         await runner._execute_step(
@@ -110,6 +135,7 @@ async def test_single_dataclass_param_receives_instance(runner):
 
     async def handler(ctx, point: Point):
         received["point"] = point
+        return make_directive(runner)
 
     with patch.object(runner, "_publish_next_directive", new=AsyncMock()):
         await runner._execute_step(

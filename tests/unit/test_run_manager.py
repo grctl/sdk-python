@@ -60,7 +60,7 @@ async def test_handle_next_directive_fetches_step_history_for_replay(mock_connec
         runner = Mock()
         runner.runtime = None
         runner_cls.side_effect = lambda runtime: Mock(runtime=runtime)
-        manager._start_task = Mock(return_value=None)  # ty:ignore[invalid-assignment]
+        manager._start_task = Mock(return_value=None)
 
         await manager.handle_next_directive(directive)
 
@@ -71,7 +71,7 @@ async def test_handle_next_directive_fetches_step_history_for_replay(mock_connec
         run_id="run-1",
         history_seq_id=42,
     )
-    runtime = manager._start_task.call_args.args[0].runtime  # ty:ignore[unresolved-attribute]
+    runtime = manager._start_task.call_args.args[0].runtime
     assert runtime.step_history == history
 
 
@@ -86,11 +86,11 @@ async def test_handle_next_directive_skips_fetch_on_first_attempt(mock_connectio
         patch("grctl.worker.run_manager.fetch_step_history", new=AsyncMock()) as fetch_history,
         patch("grctl.worker.run_manager.WorkflowRunner", side_effect=lambda runtime: Mock(runtime=runtime)),
     ):
-        manager._start_task = Mock(return_value=None)  # ty:ignore[invalid-assignment]
+        manager._start_task = Mock(return_value=None)
         await manager.handle_next_directive(directive)
 
     fetch_history.assert_not_awaited()
-    runtime = manager._start_task.call_args.args[0].runtime  # ty:ignore[unresolved-attribute]
+    runtime = manager._start_task.call_args.args[0].runtime
     assert runtime.step_history == []
 
 
@@ -105,11 +105,11 @@ async def test_handle_next_directive_skips_fetch_when_history_seq_id_missing(moc
         patch("grctl.worker.run_manager.fetch_step_history", new=AsyncMock()) as fetch_history,
         patch("grctl.worker.run_manager.WorkflowRunner", side_effect=lambda runtime: Mock(runtime=runtime)),
     ):
-        manager._start_task = Mock(return_value=None)  # ty:ignore[invalid-assignment]
+        manager._start_task = Mock(return_value=None)
         await manager.handle_next_directive(directive)
 
     fetch_history.assert_not_awaited()
-    runtime = manager._start_task.call_args.args[0].runtime  # ty:ignore[unresolved-attribute]
+    runtime = manager._start_task.call_args.args[0].runtime
     assert runtime.step_history == []
 
 

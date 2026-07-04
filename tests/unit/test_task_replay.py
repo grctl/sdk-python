@@ -41,7 +41,7 @@ def _make_runtime(step_history: list[HistoryEvent] | None = None) -> StepRuntime
         connection=AsyncMock(spec=Connection),
         step_history=step_history if step_history is not None else [],
     )
-    runtime.publisher.publish_history = AsyncMock()  # ty:ignore[invalid-assignment]
+    runtime.publisher.publish_history = AsyncMock()
     runtime.step_name = "step"
     return runtime
 
