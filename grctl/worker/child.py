@@ -7,6 +7,7 @@ from grctl.models.errors import WorkflowError
 from grctl.models.run_info import RunStatus
 
 
+# TODO: Make this "ChildResponse"
 class ChildOutcome[T](msgspec.Struct):
     """Terminal outcome of a child workflow, delivered to the parent's on_completed_step.
 

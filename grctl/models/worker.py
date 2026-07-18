@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
@@ -32,6 +33,11 @@ class WorkerRegistration(Struct, omit_defaults=True):
     connection_id: str
     wf_types: list[str]
     registered_at: datetime | None = None
+
+@dataclass
+class WorkerInfo:
+    id: str
+    name: str
 
 
 class WorkerRegistrationResponse(Struct, omit_defaults=True):

@@ -11,6 +11,7 @@ import socket
 from functools import cached_property
 
 from grctl.logging_config import get_logger
+from grctl.nats.codec import CodecRegistry
 from grctl.nats.connection import Connection
 from grctl.nats.wf_subscriber import Subscriber
 from grctl.worker.registration import build_catalog, register_workflow_types
@@ -45,6 +46,7 @@ class Worker:
         workflows: list[Workflow],
         connection: Connection,
         name: str | None = None,
+        codec: CodecRegistry | None = None,
     ) -> None:
         """Initialize the worker."""
         self._workflows = workflows
@@ -56,6 +58,7 @@ class Worker:
         self._worker_cmd_subscriber: WorkerCmdSubscriber | None = None
         self._run_manager: RunManager | None = None
         self._startup_error: Exception | None = None
+        self._codec = codec or CodecRegistry()
 
     @cached_property
     def worker_name(self) -> str:

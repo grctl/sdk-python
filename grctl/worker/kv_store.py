@@ -4,7 +4,7 @@ from typing import Any, TypeVar, overload
 import msgspec
 import msgspec.msgpack
 
-from grctl.worker.codec import CodecRegistry
+from grctl.nats.codec import CodecRegistry
 
 T = TypeVar("T")
 
@@ -18,7 +18,7 @@ class StoreKeyNotFoundError(KeyError):
         return f"Store key not found: '{self.key}'"
 
 
-class Store:
+class KVStore:
     def __init__(
         self,
         loader: Callable[[str], Awaitable[bytes | None]],

@@ -1,0 +1,129 @@
+"""Shared fakes and the record/replay harness for exec unit tests.
+
+The one invariant every operation must satisfy is: replaying recorded history
+reproduces the same value without redoing side effects. `record_then_replay`
+runs a call twice — once against fresh history, once against a journal seeded
+with what the first call recorded — and asserts that invariant so individual
+tests only need to assert what's specific to the operation under test.
+"""
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, cast
+
+from grctl.exec.child_tracker import ChildTracker
+from grctl.exec.context import Context
+from grctl.exec.journal import Journal
+from grctl.exec.step_history import HistoryCreateInput
+from grctl.models import Command, HistoryEvent, RunInfo
+from grctl.nats.connection import Connection
+
+DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
+DEFAULT_WORKER_ID = "worker-1"
+
+
+class FakeAppender:
+    """In-memory stand-in for StepHistory: stamps identity and keeps a durable log."""
+
+    def __init__(self) -> None:
+        self.events: list[HistoryEvent] = []
+
+    async def append(self, entry: HistoryCreateInput) -> None:
+        self.events.append(
+            HistoryEvent(
+                wf_id=DEFAULT_RUN_INFO.wf_id,
+                run_id=DEFAULT_RUN_INFO.id,
+                worker_id=DEFAULT_WORKER_ID,
+                timestamp=entry.timestamp,
+                kind=entry.kind,
+                msg=entry.payload,
+                operation_id=entry.operation_id,
+            )
+        )
+
+
+class FakePublisher:
+    """Records every command handed to it instead of putting it on the wire."""
+
+    def __init__(self) -> None:
+        self.published: list[Command] = []
+
+    async def publish_cmd(self, run_info: RunInfo, cmd: Command) -> None:
+        self.published.append(cmd)
+
+
+class FakeNatsClient:
+    def jetstream(self) -> None:
+        return None
+
+
+class FakeConnection:
+    """Stands in for grctl.nats.connection.Connection: a publisher plus an nc handle."""
+
+    def __init__(self) -> None:
+        self.publisher = FakePublisher()
+        self.nc = FakeNatsClient()
+
+
+def make_context(  # noqa: PLR0913
+    step_history: list[HistoryEvent] | None = None,
+    *,
+    appender: FakeAppender | None = None,
+    connection: FakeConnection | None = None,
+    run_info: RunInfo = DEFAULT_RUN_INFO,
+    worker_id: str = DEFAULT_WORKER_ID,
+    parent_run: RunInfo | None = None,
+    childs: ChildTracker | None = None,
+) -> Context:
+    """Build a Context wired to fakes, over a fresh journal seeded with `step_history`.
+
+    Pass your own `appender` when you need to assert on what got recorded — Context
+    keeps its journal private, so the appender you hand in is the only handle onto that.
+    """
+    journal = Journal(step_history=step_history or [], appender=appender if appender is not None else FakeAppender())
+    return Context(
+        journal,
+        run_info,
+        worker_id,
+        connection=cast("Connection", connection if connection is not None else FakeConnection()),
+        childs=childs if childs is not None else ChildTracker(),
+        parent_run=parent_run,
+    )
+
+
+@dataclass
+class RecordReplayResult:
+    """Outcome of `record_then_replay`, for assertions specific to one operation."""
+
+    value: Any
+    events: list[HistoryEvent]
+    replay_events: list[HistoryEvent]
+
+
+async def record_then_replay(
+    context: Callable[..., Context],
+    call: Callable[[Context], Awaitable[Any]],
+) -> RecordReplayResult:
+    """Run `call` once to record history, then again replaying that history.
+
+    `context(step_history, appender=...)` is invoked once per run (record, then
+    replay); a factory that also stashes state (e.g. the FakeConnection it built)
+    on each call lets a test inspect record-time vs. replay-time state separately.
+
+    Asserts the universal replay invariant: same value, and replay commits no new
+    events. Callers assert anything operation-specific (event kind, publish counts)
+    against the returned events.
+    """
+    appender = FakeAppender()
+    ctx = context(None, appender=appender)
+    value = await call(ctx)
+
+    history = appender.events  # becomes the replay run's step history
+    replay_appender = FakeAppender()
+    replay_ctx = context(history, appender=replay_appender)
+    replayed_value = await call(replay_ctx)
+
+    assert replayed_value == value
+    assert replay_appender.events == []
+
+    return RecordReplayResult(value=value, events=appender.events, replay_events=replay_appender.events)

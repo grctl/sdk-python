@@ -12,151 +12,24 @@ from grctl.models import (
     ChildWorkflowStarted,
     CmdKind,
     Command,
-    Complete,
     Directive,
-    DirectiveKind,
-    ErrorDetails,
     EventCmd,
-    Fail,
-    FailStep,
     HistoryKind,
     ParentEventSent,
     RandomRecorded,
     RunInfo,
     SleepRecorded,
-    Step,
-    StepResult,
     TimestampRecorded,
     UuidRecorded,
-    Wait,
 )
+from grctl.worker.kv_store import KVStore
 from grctl.worker.logger import ReplayFilter
-from grctl.worker.runtime import get_step_runtime
-from grctl.worker.store import Store
+from grctl.worker.next_directive_builder import NextDirectiveBuilder
+from grctl.worker.runtime import StepRuntime, get_step_runtime
 from grctl.workflow import WorkflowHandle
 from grctl.workflow.workflow import HandlerConfig
 
 StepHandler = Callable[..., Awaitable[Directive]]
-
-
-class NextBuilder:
-    """Builder for creating step transition directives.
-
-    Allows both ctx.next.step(step_func) and ctx.next.complete(result) syntax.
-    """
-
-    def __init__(
-        self,
-        run: RunInfo,
-        worker_id: str,
-        store: Store,
-        current_directive: Directive,
-        step_configs: dict[str, HandlerConfig] | None = None,
-    ) -> None:
-        self._run = run
-        self._worker_id = worker_id
-        self._store = store
-        self._current_directive = current_directive
-        self._step_configs = step_configs or {}
-
-    def step(self, step_fn: StepHandler) -> Directive:
-        step_name = getattr(step_fn, "__name__", None)
-        if step_name is None:
-            raise ValueError("Step function must have a __name__ attribute.")
-
-        config = self._step_configs.get(step_name)
-        timeout_ms = int(config.timeout.total_seconds() * 1000) if config and config.timeout else None
-
-        res = StepResult(
-            processed_msg_kind=self._current_directive.kind,
-            processed_msg=self._current_directive.msg,
-            worker_id=self._worker_id,
-            kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.step,
-            next_msg=Step(
-                step_name=step_name,
-                timeout_ms=timeout_ms,
-            ),
-        )
-
-        return Directive(
-            id=str(ULID()), kind=DirectiveKind.step_result, run_info=self._run, timestamp=datetime.now(UTC), msg=res
-        )
-
-    def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive:
-        timeout_step_name = getattr(on_timeout, "__name__", "") if on_timeout is not None else ""
-        res = StepResult(
-            processed_msg_kind=self._current_directive.kind,
-            processed_msg=self._current_directive.msg,
-            worker_id=self._worker_id,
-            kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.wait,
-            next_msg=Wait(
-                timeout_ms=int(timeout.total_seconds() * 1000) if timeout else 0,
-                timeout_step_name=timeout_step_name,
-            ),
-        )
-
-        return Directive(
-            id=str(ULID()), kind=DirectiveKind.step_result, run_info=self._run, timestamp=datetime.now(UTC), msg=res
-        )
-
-    def complete(self, result: Any) -> Directive:
-        res = StepResult(
-            processed_msg_kind=self._current_directive.kind,
-            processed_msg=self._current_directive.msg,
-            worker_id=self._worker_id,
-            kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.complete,
-            next_msg=Complete(
-                result=result,
-            ),
-        )
-
-        return Directive(
-            id=str(ULID()), kind=DirectiveKind.step_result, run_info=self._run, timestamp=datetime.now(UTC), msg=res
-        )
-
-    def fail_step(self, step_name: str, error: ErrorDetails) -> Directive:
-        res = StepResult(
-            processed_msg_kind=self._current_directive.kind,
-            processed_msg=self._current_directive.msg,
-            worker_id=self._worker_id,
-            kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.fail_step,
-            next_msg=FailStep(
-                step_name=step_name,
-                error=error,
-            ),
-        )
-
-        return Directive(
-            id=str(ULID()),
-            kind=DirectiveKind.step_result,
-            run_info=self._run,
-            timestamp=datetime.now(UTC),
-            msg=res,
-        )
-
-    def fail(self, error: ErrorDetails) -> Directive:
-        res = StepResult(
-            processed_msg_kind=self._current_directive.kind,
-            processed_msg=self._current_directive.msg,
-            worker_id=self._worker_id,
-            kv_updates=self._store.get_pending_updates() or {},
-            next_msg_kind=DirectiveKind.fail,
-            next_msg=Fail(
-                error=error,
-            ),
-        )
-
-        return Directive(
-            id=str(ULID()),
-            kind=DirectiveKind.step_result,
-            run_info=self._run,
-            timestamp=datetime.now(UTC),
-            msg=res,
-        )
 
 
 class Context:
@@ -168,28 +41,30 @@ class Context:
     def __init__(  # noqa: PLR0913
         self,
         run_info: RunInfo,
-        store: Store,
+        kv_store: KVStore,
         worker_id: str,
         directive: Directive,
+        runtime: StepRuntime,
         parent_run: RunInfo | None = None,
         step_configs: dict[str, HandlerConfig] | None = None,
     ) -> None:
         self.run = run_info
-        self._store = store
+        self._kv_store = kv_store
         self._worker_id = worker_id
-        self._next_builder = NextBuilder(run_info, worker_id, store, directive, step_configs)
+        self._next_builder = NextDirectiveBuilder(run_info, worker_id, kv_store, directive, step_configs)
         self._parent_run = parent_run
         # Child handles started during this step. They are single-step-scoped: cross-step
         # coordination uses events/callbacks, not in-memory futures, so any handle still
         # open when the step returns is abandoned and gets discarded.
         self._started_handles: list[WorkflowHandle] = []
+        self.runtime = runtime
 
     @property
-    def store(self) -> Store:
-        return self._store
+    def store(self) -> KVStore:
+        return self._kv_store
 
     @property
-    def next(self) -> NextBuilder:
+    def next(self) -> NextDirectiveBuilder:
         return self._next_builder
 
     @property
@@ -211,14 +86,15 @@ class Context:
         if self._parent_run is None:
             raise RuntimeError("No parent workflow to send event to.")
 
-        runtime = get_step_runtime()
-        operation_id = runtime.generate_operation_id("send_to_parent", {"event_name": event_name, "payload": payload})
-        future = await runtime.next(HistoryKind.parent_event_sent, operation_id)
+        operation_id = self.runtime.generate_operation_id(
+            "send_to_parent", {"event_name": event_name, "payload": payload}
+        )
+        future = await self.runtime.next(HistoryKind.parent_event_sent, operation_id)
         if future is not None:
             future.result()  # surfaces NonDeterminismError on kind mismatch
             return
 
-        await runtime.publisher.publish_cmd(
+        await self.runtime.publisher.publish_cmd(
             self._parent_run,
             Command(
                 id=str(ULID()),
@@ -232,7 +108,7 @@ class Context:
                 ),
             ),
         )
-        await runtime.record(
+        await self.runtime.record(
             HistoryKind.parent_event_sent,
             ParentEventSent(
                 event_name=event_name,
@@ -260,8 +136,7 @@ class Context:
         """
         callback_step_name = self._callback_step_name(on_completed_step)
 
-        runtime = get_step_runtime()
-        operation_id = runtime.generate_operation_id(
+        operation_id = self.runtime.generate_operation_id(
             "start",
             {
                 "wf_type": workflow_type,
@@ -270,7 +145,7 @@ class Context:
                 "workflow_timeout": int(workflow_timeout.total_seconds()) if workflow_timeout else None,
             },
         )
-        future = await runtime.next(HistoryKind.child_started, operation_id)
+        future = await self.runtime.next(HistoryKind.child_started, operation_id)
 
         run_id = cast("ChildWorkflowStarted", future.result()).run_id if future is not None else str(ULID())
 
@@ -288,14 +163,14 @@ class Context:
         handle = WorkflowHandle(
             run_info=run_info,
             payload=workflow_input,
-            connection=runtime.connection,
+            connection=self.runtime.connection,
             sender_id=self._worker_id,
         )
         self._started_handles.append(handle)
 
         if future is None:
             await handle.start()
-            await runtime.record(
+            await self.runtime.record(
                 HistoryKind.child_started,
                 ChildWorkflowStarted(run_id=run_id, wf_type=workflow_type, wf_id=workflow_id, input=workflow_input),
                 operation_id,
@@ -321,7 +196,7 @@ class Context:
             await handle.future.start()
         return await handle.result(timeout=timeout)
 
-    async def discard_started_handles(self) -> None:
+    async def _discard_started_handles(self) -> None:
         """Silently release child handles started during this step but not awaited.
 
         Called by the runner once the step returns its directive, on both the success
@@ -342,41 +217,37 @@ class Context:
         return step_name
 
     async def now(self) -> datetime:
-        runtime = get_step_runtime()
-        operation_id = runtime.generate_operation_id("now", {})
-        future = await runtime.next(HistoryKind.timestamp_recorded, operation_id)
+        operation_id = self.runtime.generate_operation_id("now", {})
+        future = await self.runtime.next(HistoryKind.timestamp_recorded, operation_id)
         if future is not None:
             return cast("TimestampRecorded", future.result()).value
         value = datetime.now(UTC)
-        await runtime.record(HistoryKind.timestamp_recorded, TimestampRecorded(value=value), operation_id)
+        await self.runtime.record(HistoryKind.timestamp_recorded, TimestampRecorded(value=value), operation_id)
         return value
 
     async def random(self) -> float:
-        runtime = get_step_runtime()
-        operation_id = runtime.generate_operation_id("random", {})
-        future = await runtime.next(HistoryKind.random_recorded, operation_id)
+        operation_id = self.runtime.generate_operation_id("random", {})
+        future = await self.runtime.next(HistoryKind.random_recorded, operation_id)
         if future is not None:
             return cast("RandomRecorded", future.result()).value
         value = _random()  # noqa: S311
-        await runtime.record(HistoryKind.random_recorded, RandomRecorded(value=value), operation_id)
+        await self.runtime.record(HistoryKind.random_recorded, RandomRecorded(value=value), operation_id)
         return value
 
     async def uuid4(self) -> uuid.UUID:
-        runtime = get_step_runtime()
-        operation_id = runtime.generate_operation_id("uuid4", {})
-        future = await runtime.next(HistoryKind.uuid_recorded, operation_id)
+        operation_id = self.runtime.generate_operation_id("uuid4", {})
+        future = await self.runtime.next(HistoryKind.uuid_recorded, operation_id)
         if future is not None:
             return uuid.UUID(cast("UuidRecorded", future.result()).value)
         value = uuid.uuid4()
-        await runtime.record(HistoryKind.uuid_recorded, UuidRecorded(value=str(value)), operation_id)
+        await self.runtime.record(HistoryKind.uuid_recorded, UuidRecorded(value=str(value)), operation_id)
         return value
 
     async def sleep(self, duration: timedelta) -> None:
-        runtime = get_step_runtime()
         duration_ms = int(duration.total_seconds() * 1000)
-        operation_id = runtime.generate_operation_id("sleep", {"duration_ms": duration_ms})
-        future = await runtime.next(HistoryKind.sleep_recorded, operation_id)
+        operation_id = self.runtime.generate_operation_id("sleep", {"duration_ms": duration_ms})
+        future = await self.runtime.next(HistoryKind.sleep_recorded, operation_id)
         if future is not None:
             return
         await asyncio.sleep(duration.total_seconds())
-        await runtime.record(HistoryKind.sleep_recorded, SleepRecorded(duration_ms=duration_ms), operation_id)
+        await self.runtime.record(HistoryKind.sleep_recorded, SleepRecorded(duration_ms=duration_ms), operation_id)

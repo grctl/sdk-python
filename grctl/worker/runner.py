@@ -2,10 +2,7 @@ import functools
 import traceback
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from grctl.worker.context import Context
+from typing import Any
 
 from grctl.logging_config import get_logger
 from grctl.models import (
@@ -19,6 +16,7 @@ from grctl.models import (
 )
 from grctl.models.directive import StepResult
 from grctl.models.run_info_helper import RunInfoManager
+from grctl.worker.context import Context
 from grctl.worker.errors import NextDirectiveMissingError
 from grctl.worker.runtime import StepRuntime, set_step_runtime
 from grctl.workflow.workflow import HandlerConfig
@@ -37,7 +35,7 @@ def workflow_error_handler(func):  # noqa: ANN001, ANN201
             stack_trace = traceback.format_exc()
             logger.exception(f"Workflow execution failed in {func.__name__}")
 
-            ctx = self.runtime.get_step_context()
+            ctx = self.context
             fail_directive = ctx.next.fail_step(
                 step_name=self.runtime.step_name,
                 error=ErrorDetails(
@@ -59,10 +57,12 @@ class WorkflowRunner:
 
     _result = None
 
-    def __init__(self, runtime: StepRuntime) -> None:
+    def __init__(self, runtime: StepRuntime, context: Context) -> None:
         self.runtime = runtime
         self._runtime_token = set_step_runtime(runtime)
         self.workflow = runtime.workflow
+        self.context = context
+        self.codec = runtime.connection.codec
 
     async def handle_directive(self, directive: Directive) -> None:
         """Dispatch directive to appropriate handler."""
@@ -122,13 +122,12 @@ class WorkflowRunner:
         return None
 
     async def _execute_step(self, handler_config: HandlerConfig, payload: Any | None) -> None:
-        ctx = self.runtime.get_step_context()
         start_time = datetime.now(UTC)
 
         await self._publish_step_picked_up()
 
         try:
-            directive = await self._invoke_handler(ctx, handler_config, payload)
+            directive = await self._invoke_handler(self.context, handler_config, payload)
             if not isinstance(directive, Directive):
                 raise NextDirectiveMissingError(
                     f"Step did not return a Directive. {directive=}", self.runtime.step_name
@@ -144,7 +143,7 @@ class WorkflowRunner:
         finally:
             # Always release child handles started in this step, even when the handler
             # raised, so an unawaited future never warns or leaks its subscription.
-            await ctx.discard_started_handles()
+            await self.context._discard_started_handles()  # noqa: SLF001
 
     async def _invoke_handler(self, ctx: "Context", handler_config: HandlerConfig, payload: Any | None) -> Directive:
         spec = handler_config.spec
@@ -157,15 +156,14 @@ class WorkflowRunner:
         if len(spec.params) == 1:
             name, param_type = next(iter(spec.params.items()))
             raw = payload[name] if isinstance(payload, dict) and name in payload else payload
-            typed_value = self.runtime.codec.from_primitive(raw, param_type)
+            typed_value = self.codec.from_primitive(raw, param_type)
             return await handler(ctx, **{name: typed_value})
 
         # Multi param: convert each param from the payload dict and pass as kwargs
         if not isinstance(payload, dict):
             raise TypeError(f"Handler expects params {list(spec.params)} but payload is not a dict: {type(payload)}")
         typed_kwargs = {
-            name: self.runtime.codec.from_primitive(payload[name], param_type)
-            for name, param_type in spec.params.items()
+            name: self.codec.from_primitive(payload[name], param_type) for name, param_type in spec.params.items()
         }
         return await handler(ctx, **typed_kwargs)
 
@@ -184,7 +182,7 @@ class WorkflowRunner:
                 ),
             )
             await self.runtime.publisher.publish_next_directive(
-                self.runtime.run_info, directive, enc_hook=self.runtime.codec.enc_hook
+                self.runtime.run_info, directive, enc_hook=self.codec.enc_hook
             )
 
     async def _publish_next_directive(
@@ -198,10 +196,10 @@ class WorkflowRunner:
         if step_start_time is not None and isinstance(directive.msg, StepResult):
             directive.msg.duration_ms = int((datetime.now(UTC) - step_start_time).total_seconds() * 1000)
 
-        pending_updates = self.runtime.store.get_pending_updates()
+        pending_updates = self.context.store.get_pending_updates()
         if pending_updates:
             directive.kv_revs = pending_updates
 
         await self.runtime.publisher.publish_next_directive(
-            self.runtime.run_info, directive, enc_hook=self.runtime.codec.enc_hook
+            self.runtime.run_info, directive, enc_hook=self.codec.enc_hook
         )

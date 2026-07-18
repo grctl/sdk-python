@@ -52,6 +52,7 @@ class Step(msgspec.Struct):
 
     step_name: str
     timeout_ms: int | None = 3_000  # 3 seconds in nanoseconds (Go time.Duration)
+    payload: Any | None = None
 
 
 class Wait(msgspec.Struct):
@@ -118,7 +119,7 @@ class StepResult(msgspec.Struct):
 
 
 DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | Wait | StepResult | StepPickedUp
-
+NextMessage = Step | Fail | Complete | Wait
 
 # Factory map for kind-based deserialization
 directive_factories: dict[str, type[DirectiveMessage]] = {

@@ -22,7 +22,7 @@ from grctl.models.history import (
     TaskFailed,
     TaskStarted,
 )
-from grctl.worker.codec import CodecRegistry
+from grctl.nats.codec import CodecRegistry
 from grctl.worker.runtime import get_step_runtime
 
 if TYPE_CHECKING:

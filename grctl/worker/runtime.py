@@ -2,28 +2,16 @@ import asyncio
 import hashlib
 from contextvars import ContextVar, Token
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import msgspec
 
-from grctl.models import Directive, HistoryEvent, HistoryKind, RunInfo
+from grctl.models import Directive, HistoryEvent, HistoryKind
 from grctl.models.history import HistoryEvents
 from grctl.nats.connection import Connection
-from grctl.nats.kv_store import KVStore
-from grctl.worker.codec import CodecRegistry
-from grctl.worker.store import Store
 from grctl.workflow import Workflow
 
-if TYPE_CHECKING:
-    from grctl.worker.context import Context
-
 _step_run_time = ContextVar("step_run_time")
-
-
-def _generate_operation_id(fn_name: str, args: dict[str, Any], seq: int) -> str:
-    data = msgspec.msgpack.encode({"args": args, "seq": seq})
-    digest = hashlib.sha256(data).hexdigest()[:16]
-    return f"{fn_name}:{digest}"
 
 
 class NonDeterminismError(Exception):
@@ -61,19 +49,19 @@ class StepRuntime:
         self.worker_id = worker_id
         self.directive = directive
         self.connection = connection
+        self.codec = connection.codec
         self.publisher = connection.publisher
-        self.codec = CodecRegistry()
-        self.store = self._create_store()
         self.step_history = step_history
         self.step_name: str
-        self.parent_run = self._create_parent_run()
         self._seq: int = 0
         self._cursor: int = 0
         self._pending: dict[str, tuple[asyncio.Future[HistoryEvents], frozenset[HistoryKind]]] = {}
 
     def generate_operation_id(self, fn_name: str, args: dict[str, Any]) -> str:
         self._seq += 1
-        return _generate_operation_id(fn_name, args, self._seq)
+        data = msgspec.msgpack.encode({"args": args, "seq": self._seq})
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        return f"{fn_name}:{digest}"
 
     @property
     def is_replaying(self) -> bool:
@@ -133,31 +121,6 @@ class StepRuntime:
     async def record(self, kind: HistoryKind, payload: HistoryEvents, operation_id: str) -> None:
         event = self._create_history_event(kind, payload, operation_id)
         await self.publisher.publish_history(run_info=self.run_info, event=event, enc_hook=self.codec.enc_hook)
-
-    def get_step_context(self) -> "Context":
-        from grctl.worker.context import Context  # noqa: PLC0415
-
-        return Context(
-            run_info=self.run_info,
-            store=self.store,
-            worker_id=self.worker_id,
-            directive=self.directive,
-            parent_run=self.parent_run,
-            step_configs=self.workflow._step_handlers,  # noqa: SLF001
-        )
-
-    def _create_store(self) -> Store:
-        kv_store = KVStore(self.connection.js, self.connection.manifest, self.run_info)
-        return Store(loader=kv_store.load, codec=self.codec)
-
-    def _create_parent_run(self) -> RunInfo | None:
-        if self.run_info.parent_run_id and self.run_info.parent_wf_id:
-            return RunInfo(
-                id=self.run_info.parent_run_id,
-                wf_id=self.run_info.parent_wf_id,
-                wf_type=self.run_info.parent_wf_type or "",
-            )
-        return None
 
     def _create_history_event(self, kind: HistoryKind, payload: HistoryEvents, operation_id: str) -> HistoryEvent:
         """Wrap a step history payload with the shared event metadata."""

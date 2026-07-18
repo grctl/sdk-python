@@ -10,7 +10,7 @@ type EncodeFn = Callable[[Any], Any]
 type DecodeFn = Callable[[type, Any], Any]
 
 
-class CodecRegistry:
+class Serializer:
     def __init__(self) -> None:
         self._handlers: list[tuple[CheckFn, EncodeFn, DecodeFn]] = [
             (
@@ -24,17 +24,35 @@ class CodecRegistry:
         # LIFO — last registered wins over earlier handlers
         self._handlers.insert(0, (check, encode, decode))
 
-    def enc_hook(self, obj: Any) -> Any:
+    def encode_custom(self, obj: Any) -> Any:
         for check, encode, _ in self._handlers:
             if check(type(obj)):
                 return encode(obj)
         raise TypeError(f"Unsupported type: {type(obj)}")
 
-    def dec_hook(self, tp: type, obj: Any) -> Any:
+    def decode_custom(self, tp: type, obj: Any) -> Any:
         for check, _, decode in self._handlers:
             if check(tp):
                 return decode(tp, obj)
         raise TypeError(f"Unsupported type: {tp}")
+
+
+class MsgspecCodec:
+    def __init__(self, serializer: Serializer | None = None) -> None:
+        self._serializer = serializer or Serializer()
+
+    @property
+    def serializer(self) -> Serializer:
+        return self._serializer
+
+    def register(self, check: CheckFn, encode: EncodeFn, decode: DecodeFn) -> None:
+        self._serializer.register(check, encode, decode)
+
+    def enc_hook(self, obj: Any) -> Any:
+        return self._serializer.encode_custom(obj)
+
+    def dec_hook(self, tp: type, obj: Any) -> Any:
+        return self._serializer.decode_custom(tp, obj)
 
     def to_primitive(self, value: Any) -> Any:
         return msgspec.to_builtins(value, enc_hook=self.enc_hook)
@@ -47,3 +65,7 @@ class CodecRegistry:
 
     def decode(self, data: bytes) -> Any:
         return msgspec.msgpack.decode(data)
+
+
+class CodecRegistry(MsgspecCodec):
+    """Backward-compatible msgspec codec with built-in custom serializers."""

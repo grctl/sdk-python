@@ -11,7 +11,7 @@ class KVStore:
     """NATS KV store for workflow state.
 
     Provides low-level operations for loading and storing workflow data
-    in NATS JetStream KV buckets.
+    in NATS JetStream
     """
 
     def __init__(self, js: JetStreamContext, manifest: NatsManifest, run: RunInfo) -> None:

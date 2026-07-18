@@ -1,34 +1,19 @@
 from __future__ import annotations
 
-import dataclasses
 import inspect
 import logging
 import typing
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import timedelta
-from typing import Any, Protocol, TypeVar
+from typing import Any
 
 from grctl.models.command import EventDef
-from grctl.models.directive import Directive
+from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec
 
 logger = logging.getLogger(__name__)
 
 
-class _Handler(Protocol):
-    __name__: str
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[Directive]: ...
-
-
-_HandlerF = TypeVar("_HandlerF", bound=_Handler)
-
-
-@dataclasses.dataclass
-class HandlerSpec:
-    params: dict[str, type]  # param name → resolved type, excludes ctx
-
-
-def inspect_handler(fn: Callable[..., Any]) -> HandlerSpec:
+def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
     sig = inspect.signature(fn)
     # get_type_hints resolves string annotations produced by `from __future__ import annotations`
     hints = typing.get_type_hints(fn)
@@ -46,14 +31,6 @@ def inspect_handler(fn: Callable[..., Any]) -> HandlerSpec:
         params[name] = hints[name]
 
     return HandlerSpec(params=params)
-
-
-@dataclasses.dataclass
-class HandlerConfig:
-    handler: Callable[..., Awaitable[Directive]]
-    spec: HandlerSpec
-    timeout: timedelta | None = None
-    on_timeout_handler: Callable[..., Awaitable[Directive]] | None = None
 
 
 class Workflow:
@@ -137,7 +114,7 @@ class Workflow:
         """Names of all registered query handlers."""
         return list(self._query_handlers.keys())
 
-    def start(self, timeout: timedelta | None = None) -> Callable[[_HandlerF], _HandlerF]:
+    def start(self, timeout: timedelta | None = None) -> Callable[[HandlerF], HandlerF]:
         """Decorate the workflow start handler.
 
         The start handler is called once when a workflow is first created.
@@ -162,12 +139,12 @@ class Workflow:
 
         """
 
-        def decorator(func: _HandlerF) -> _HandlerF:
+        def decorator(func: HandlerF) -> HandlerF:
             if self.start_handler is not None:
                 msg = f"Workflow already has a start handler: {self.start_handler.handler.__name__}"  # ty:ignore[unresolved-attribute]
                 raise ValueError(msg)
 
-            spec = inspect_handler(func)
+            spec = get_handler_spec(func)
             self.start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
             logger.debug(f"Registered start handler for workflow: {self._type}")
             return func
@@ -177,7 +154,7 @@ class Workflow:
     def step(
         self,
         timeout: timedelta | None = None,
-    ) -> Callable[[_HandlerF], _HandlerF]:
+    ) -> Callable[[HandlerF], HandlerF]:
         """Decorate the workflow step handler.
 
         Step represents a discrete unit of work within the workflow. Each step can create a checkpoint.
@@ -200,13 +177,13 @@ class Workflow:
 
         """
 
-        def decorator(func: _HandlerF) -> _HandlerF:
+        def decorator(func: HandlerF) -> HandlerF:
             if self._step_handlers.get(func.__name__) is not None:
                 msg = f"Step handler '{func.__name__}' already registered"
                 raise ValueError(msg)
 
             step_timeout = timeout if timeout is not None else timedelta(seconds=10)
-            spec = inspect_handler(func)
+            spec = get_handler_spec(func)
 
             self._step_handlers[func.__name__] = HandlerConfig(
                 handler=func,
@@ -222,7 +199,7 @@ class Workflow:
         self,
         name: str | None = None,
         timeout: timedelta | None = None,
-    ) -> Callable[[_HandlerF], _HandlerF]:
+    ) -> Callable[[HandlerF], HandlerF]:
         """Decorate workflow event handlers.
 
         Events are asynchronous, fire-and-forget notifications sent to
@@ -253,14 +230,14 @@ class Workflow:
 
         """
 
-        def decorator(func: _HandlerF) -> _HandlerF:
+        def decorator(func: HandlerF) -> HandlerF:
             event_name = name or func.__name__
 
             if event_name in self._on_event_handlers:
                 msg = f"Event '{event_name}' already registered"
                 raise ValueError(msg)
 
-            spec = inspect_handler(func)
+            spec = get_handler_spec(func)
             self._on_event_handlers[event_name] = HandlerConfig(
                 handler=func,
                 spec=spec,

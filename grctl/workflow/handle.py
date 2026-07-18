@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload
 from ulid import ULID
 
 from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd, TerminateCmd
-from grctl.worker.codec import CodecRegistry
+from grctl.nats.codec import CodecRegistry
 from grctl.workflow.future import WorkflowFuture
 
 if TYPE_CHECKING:

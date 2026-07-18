@@ -22,7 +22,6 @@ from grctl.models.errors import (
 )
 from grctl.nats.connection import Connection
 from grctl.nats.history_fetch import fetch_run_history
-from grctl.worker.codec import CodecRegistry
 from grctl.workflow.handle import WorkflowHandle
 
 logger = logging.getLogger(__name__)
@@ -37,9 +36,9 @@ ErrWorkflowTypeNotRegisteredCode = 4004
 class Client:
     """Client for interacting with the Workflow Engine."""
 
-    def __init__(self, connection: Connection, codec: CodecRegistry | None = None) -> None:
+    def __init__(self, connection: Connection) -> None:
         self._connection = connection
-        self._codec = codec or CodecRegistry()
+        self._codec = connection.codec
         self.id = f"c_{secrets.token_hex(4)}@{socket.gethostname()}"
 
     async def describe(self, wf_id: str) -> RunInfo:
