@@ -1,6 +1,7 @@
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from logging import Logger
 from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
@@ -8,8 +9,9 @@ from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
 from grctl.models import Directive, RunInfo
-from grctl.nats.connection import Connection
 from grctl.workflow import WorkflowHandle
+from grctl.workflow.future import HistoryListenerFactory
+from grctl.workflow.handle import CommandSender
 
 StepHandler = Callable[..., Awaitable[Directive]]
 
@@ -22,14 +24,18 @@ class Context:
         journal: Journal,
         run_info: RunInfo,
         worker_id: str,
-        connection: Connection,
+        command_sender: CommandSender,
+        listener_factory: HistoryListenerFactory,
+        logger: Logger,
         childs: ChildTracker,
         parent_run: RunInfo | None = None,
     ) -> None:
         self._journal = journal
         self._run_info = run_info
         self._worker_id = worker_id
-        self._connection = connection
+        self._command_sender = command_sender
+        self._listener_factory = listener_factory
+        self._logger = logger
         self._childs = childs
         self._parent_run = parent_run
 
@@ -51,7 +57,7 @@ class Context:
 
     async def send_to_parent(self, event_name: str, payload: Any | None = None) -> None:
         """Emit an event to the parent workflow, if any."""
-        operation = SendToParent(self._parent_run, self._worker_id, self._connection, event_name, payload)
+        operation = SendToParent(self._parent_run, self._worker_id, self._command_sender, event_name, payload)
         await self._journal.run(operation)
 
     async def start_child(
@@ -72,7 +78,9 @@ class Context:
         operation = StartChild(
             self._run_info,
             self._worker_id,
-            self._connection,
+            self._command_sender,
+            self._listener_factory,
+            self._logger,
             self._childs,
             workflow_type,
             workflow_id,
@@ -97,8 +105,7 @@ class Context:
         timeout: client-side wait in seconds, independent of the server-side workflow_timeout.
         """
         handle = await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
-        if not handle.future.is_started:
-            await handle.future.start()
+        await handle.future.start()
         return await handle.result(timeout=timeout)
 
     @staticmethod

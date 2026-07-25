@@ -7,16 +7,16 @@ with what the first call recorded — and asserts that invariant so individual
 tests only need to assert what's specific to the operation under test.
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import Command, HistoryEvent, RunInfo
-from grctl.nats.connection import Connection
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
 DEFAULT_WORKER_ID = "worker-1"
@@ -42,34 +42,40 @@ class FakeAppender:
         )
 
 
-class FakePublisher:
+class FakeCommandSender:
     """Records every command handed to it instead of putting it on the wire."""
 
     def __init__(self) -> None:
-        self.published: list[Command] = []
+        self.sent: list[Command] = []
 
-    async def publish_cmd(self, run_info: RunInfo, cmd: Command) -> None:
-        self.published.append(cmd)
+    async def send(self, run: RunInfo, cmd: Command) -> bytes:
+        self.sent.append(cmd)
+        return b""
 
 
-class FakeNatsClient:
-    def jetstream(self) -> None:
+class FakeHistoryListener:
+    """No-op stand-in for a HistoryListener: nothing actually delivers events in tests."""
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
         return None
 
 
-class FakeConnection:
-    """Stands in for grctl.nats.connection.Connection: a publisher plus an nc handle."""
+class FakeHistoryListenerFactory:
+    """Stands in for a HistoryListenerFactory, handing out no-op listeners."""
 
-    def __init__(self) -> None:
-        self.publisher = FakePublisher()
-        self.nc = FakeNatsClient()
+    def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> FakeHistoryListener:
+        return FakeHistoryListener()
 
 
 def make_context(  # noqa: PLR0913
     step_history: list[HistoryEvent] | None = None,
     *,
     appender: FakeAppender | None = None,
-    connection: FakeConnection | None = None,
+    command_sender: FakeCommandSender | None = None,
+    listener_factory: FakeHistoryListenerFactory | None = None,
     run_info: RunInfo = DEFAULT_RUN_INFO,
     worker_id: str = DEFAULT_WORKER_ID,
     parent_run: RunInfo | None = None,
@@ -85,7 +91,9 @@ def make_context(  # noqa: PLR0913
         journal,
         run_info,
         worker_id,
-        connection=cast("Connection", connection if connection is not None else FakeConnection()),
+        command_sender=command_sender if command_sender is not None else FakeCommandSender(),
+        listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
+        logger=logging.getLogger("tests.exec"),
         childs=childs if childs is not None else ChildTracker(),
         parent_run=parent_run,
     )

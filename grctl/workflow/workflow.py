@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import logging
 import typing
 from collections.abc import Callable
 from datetime import timedelta
@@ -9,8 +8,6 @@ from typing import Any
 
 from grctl.models.command import EventDef
 from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec
-
-logger = logging.getLogger(__name__)
 
 
 def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
@@ -146,7 +143,6 @@ class Workflow:
 
             spec = get_handler_spec(func)
             self.start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
-            logger.debug(f"Registered start handler for workflow: {self._type}")
             return func
 
         return decorator
@@ -190,7 +186,6 @@ class Workflow:
                 spec=spec,
                 timeout=step_timeout,
             )
-            logger.debug(f"Registered step handler '{func.__name__}' for workflow: {self._type}")
             return func
 
         return decorator
@@ -243,9 +238,6 @@ class Workflow:
                 spec=spec,
                 timeout=timeout,
             )
-            logger.debug(
-                f"Registered on_event handler '{event_name}' for workflow: {self._type or 'unnamed'}",
-            )
             return func
 
         return decorator
@@ -283,10 +275,6 @@ class Workflow:
                 raise ValueError(msg)
 
             self._query_handlers[query_name] = func
-
-            logger.debug(
-                f"Registered query handler '{query_name}' for workflow: {self._type or 'unnamed'}",
-            )
             return func
 
         return decorator

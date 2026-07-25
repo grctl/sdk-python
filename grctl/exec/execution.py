@@ -14,7 +14,8 @@ from grctl.models import Directive, DirectiveKind, ErrorDetails, Fail, HistoryEv
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
 from grctl.models.worker import WorkerInfo
-from grctl.nats.connection import Connection
+from grctl.workflow.future import HistoryListenerFactory
+from grctl.workflow.handle import CommandSender
 
 
 class StepDirectiveSender(Protocol):
@@ -51,7 +52,8 @@ class Execution:
         step_directive_sender: StepDirectiveSender,
         codec: Codec,
         logger: Logger,
-        connection: Connection,
+        command_sender: CommandSender,
+        listener_factory: HistoryListenerFactory,
         step_history: list[HistoryEvent] | None = None,
     ) -> None:
         self.run_info = run_info
@@ -65,11 +67,17 @@ class Execution:
         self.directive_sender = step_directive_sender
         self.codec = codec
         self.logger = logger
-        self.connection = connection
         self.step_directive_factory = StepDirectiveFactory(run_info, worker_info.id, directive)
         self.journal = Journal(self.step_history, self.history_appender)
         self.context = Context(
-            self.journal, run_info, worker_info.id, connection, self.childs, self.parent_run
+            self.journal,
+            run_info,
+            worker_info.id,
+            command_sender,
+            listener_factory,
+            logger,
+            self.childs,
+            self.parent_run,
         )
 
         # Async task for step execution

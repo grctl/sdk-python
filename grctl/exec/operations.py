@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
+from logging import Logger
 from random import random as _random
 from typing import Any
 
@@ -22,8 +23,9 @@ from grctl.models import (
     UuidRecorded,
 )
 from grctl.models.history import HistoryEvents
-from grctl.nats.connection import Connection
 from grctl.workflow import WorkflowHandle
+from grctl.workflow.future import HistoryListenerFactory
+from grctl.workflow.handle import CommandSender
 
 
 class Now:
@@ -137,7 +139,9 @@ class StartChild:
         self,
         run_info: RunInfo,
         worker_id: str,
-        connection: Connection,
+        command_sender: CommandSender,
+        listener_factory: HistoryListenerFactory,
+        logger: Logger,
         childs: ChildTracker,
         workflow_type: str,
         workflow_id: str,
@@ -147,7 +151,9 @@ class StartChild:
     ) -> None:
         self._run_info = run_info
         self._worker_id = worker_id
-        self._connection = connection
+        self._command_sender = command_sender
+        self._listener_factory = listener_factory
+        self._logger = logger
         self._childs = childs
         self._workflow_type = workflow_type
         self._workflow_id = workflow_id
@@ -204,8 +210,10 @@ class StartChild:
         return WorkflowHandle(
             run_info=child_run_info,
             payload=workflow_input,
-            connection=self._connection,
+            command_sender=self._command_sender,
+            listener_factory=self._listener_factory,
             sender_id=self._worker_id,
+            logger=self._logger,
         )
 
 
@@ -216,7 +224,7 @@ class SendToParent:
         self,
         parent_run: RunInfo | None,
         worker_id: str,
-        connection: Connection,
+        command_sender: CommandSender,
         event_name: str,
         payload: Any | None = None,
     ) -> None:
@@ -224,7 +232,7 @@ class SendToParent:
             raise RuntimeError("No parent workflow to send event to.")
         self._parent_run = parent_run
         self._worker_id = worker_id
-        self._connection = connection
+        self._command_sender = command_sender
         self._event_name = event_name
         self._payload = payload
 
@@ -241,7 +249,7 @@ class SendToParent:
         return frozenset({HistoryKind.parent_event_sent})
 
     async def perform(self) -> Outcome:
-        await self._connection.publisher.publish_cmd(
+        await self._command_sender.send(
             self._parent_run,
             Command(
                 id=str(ULID()),

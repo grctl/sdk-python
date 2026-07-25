@@ -122,14 +122,14 @@ class CommandWire(msgspec.Struct):
     s: str = ""
 
 
-def command_encoder(cmd: Command) -> bytes:
+def command_encoder(cmd: Command, enc_hook: Any = None) -> bytes:
     """Encode command to msgpack with compact wire format."""
     if cmd.msg is None:
         raise ValueError("Command message cannot be None")
     if cmd.sender_id == "":
         raise ValueError("Command sender ID cannot be empty")
 
-    msg_bytes = msgspec.msgpack.encode(cmd.msg)
+    msg_bytes = msgspec.msgpack.encode(cmd.msg, enc_hook=enc_hook)
 
     wire = CommandWire(
         id=cmd.id,

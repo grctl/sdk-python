@@ -1,5 +1,5 @@
+import logging
 from datetime import UTC, datetime
-from typing import cast
 
 import pytest
 
@@ -8,8 +8,13 @@ from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.operations import StartChild
 from grctl.models import ChildWorkflowStarted, HistoryEvent, HistoryKind, RunInfo
-from grctl.nats.connection import Connection
-from tests.unit.exec.fakes import FakeAppender, FakeConnection, make_context, record_then_replay
+from tests.unit.exec.fakes import (
+    FakeAppender,
+    FakeCommandSender,
+    FakeHistoryListenerFactory,
+    make_context,
+    record_then_replay,
+)
 
 
 async def test_send_to_parent_raises_without_a_parent() -> None:
@@ -21,28 +26,37 @@ async def test_send_to_parent_raises_without_a_parent() -> None:
 
 async def test_send_to_parent_publishes_and_records_once() -> None:
     parent_run = RunInfo(id="parent-run", wf_id="parent-wf", wf_type="parent-workflow")
-    connections: list[FakeConnection] = []
+    command_senders: list[FakeCommandSender] = []
 
     def context(step_history: list[HistoryEvent] | None, *, appender: FakeAppender) -> Context:
-        connection = FakeConnection()
-        connections.append(connection)
-        return make_context(step_history, appender=appender, connection=connection, parent_run=parent_run)
+        command_sender = FakeCommandSender()
+        command_senders.append(command_sender)
+        return make_context(step_history, appender=appender, command_sender=command_sender, parent_run=parent_run)
 
     result = await record_then_replay(context, lambda ctx: ctx.send_to_parent("approved", {"amount": 5}))
 
-    record_connection, replay_connection = connections
-    assert len(record_connection.publisher.published) == 1
+    record_sender, replay_sender = command_senders
+    assert len(record_sender.sent) == 1
     assert len(result.events) == 1
     assert result.events[0].kind == HistoryKind.parent_event_sent
-    assert replay_connection.publisher.published == []
+    assert replay_sender.sent == []
 
 
 async def test_start_child_replay_reconstructs_handle_without_publishing() -> None:
     """On replay, start_child must not re-publish a start command for the child."""
     run_info = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
-    connection = FakeConnection()
+    command_sender = FakeCommandSender()
+    listener_factory = FakeHistoryListenerFactory()
     op = StartChild(
-        run_info, "worker-1", cast("Connection", connection), ChildTracker(), "child-workflow", "child-1", {"x": 1}
+        run_info,
+        "worker-1",
+        command_sender,
+        listener_factory,
+        logging.getLogger("tests.exec"),
+        ChildTracker(),
+        "child-workflow",
+        "child-1",
+        {"x": 1},
     )
     operation_id = Journal(step_history=[], appender=FakeAppender()).generate_operation_id(op.name, op.args)
 
@@ -59,12 +73,17 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
     replay_appender = FakeAppender()
     childs = ChildTracker()
     ctx = make_context(
-        [recorded_event], appender=replay_appender, connection=connection, run_info=run_info, childs=childs
+        [recorded_event],
+        appender=replay_appender,
+        command_sender=command_sender,
+        listener_factory=listener_factory,
+        run_info=run_info,
+        childs=childs,
     )
 
     handle = await ctx.start_child("child-workflow", "child-1", {"x": 1})
 
     assert handle.run_info.id == "child-run-1"
-    assert connection.publisher.published == []
+    assert command_sender.sent == []
     assert replay_appender.events == []
     assert childs.started == [handle]

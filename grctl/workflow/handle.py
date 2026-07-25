@@ -1,18 +1,18 @@
 import asyncio
-import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from logging import Logger
+from typing import Any, Protocol
 
 from ulid import ULID
 
 from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd, TerminateCmd
-from grctl.nats.codec import CodecRegistry
-from grctl.workflow.future import WorkflowFuture
+from grctl.workflow.future import HistoryListenerFactory, ResultDecoder, WorkflowFuture
 
-if TYPE_CHECKING:
-    from grctl.nats.connection import Connection
 
-_T = TypeVar("_T")
+class CommandSender(Protocol):
+    """Delivers a Command to a run and returns the raw response."""
+
+    async def send(self, run: RunInfo, cmd: Command) -> bytes: ...
 
 
 class WorkflowHandle:
@@ -20,19 +20,21 @@ class WorkflowHandle:
         self,
         run_info: RunInfo,
         payload: Any | None,
-        connection: "Connection",
+        command_sender: CommandSender,
+        listener_factory: HistoryListenerFactory,
         sender_id: str,
-        codec: CodecRegistry | None = None,
+        logger: Logger,
         return_type: type | None = None,
+        decoder: ResultDecoder | None = None,
     ) -> None:
         self.run_info = run_info
         self._payload = payload
-        self._connection = connection
-        self._codec = codec or CodecRegistry()
-        self._return_type = return_type
+        self._command_sender = command_sender
         self._sender_id = sender_id
-        self._logger = logging.getLogger(f"grctl.workflow.{run_info.wf_type}")
-        self.future = WorkflowFuture(run_info, connection.nc, payload)
+        self._logger = logger
+        self.future = WorkflowFuture(
+            run_info, listener_factory, logger, payload, return_type=return_type, decoder=decoder
+        )
 
     async def attach(self) -> None:
         """Attach to an existing workflow run by starting the future subscription only."""
@@ -41,14 +43,13 @@ class WorkflowHandle:
 
     async def start(self) -> bytes:
         """Start the workflow future (subscribe to events and publish run command)."""
-        input_value = self._codec.decode(self._codec.encode(self._payload)) if self._payload is not None else None
         cmd = Command(
             id=str(ULID()),
             kind=CmdKind.run_start,
             timestamp=datetime.now(UTC),
             msg=StartCmd(
                 run_info=self.run_info,
-                input=input_value,
+                input=self._payload,
             ),
             sender_id=self._sender_id,
         )
@@ -57,10 +58,9 @@ class WorkflowHandle:
         self._logger.debug(
             "Publishing start command for wf_type=%s wf_id=%s", self.run_info.wf_type, self.run_info.wf_id
         )
-        return await self._connection.publisher.publish_cmd(self.run_info, cmd)
+        return await self._command_sender.send(self.run_info, cmd)
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
-        normalized = self._codec.decode(self._codec.encode(payload)) if payload is not None else None
         cmd = Command(
             id=str(ULID()),
             kind=CmdKind.run_event,
@@ -68,35 +68,21 @@ class WorkflowHandle:
             msg=EventCmd(
                 wf_id=self.run_info.wf_id,
                 event_name=event_name,
-                payload=normalized,
+                payload=payload,
             ),
             sender_id=self._sender_id,
         )
         self._logger.debug("Publishing event command for workflow %s", cmd)
-        await self._connection.publisher.publish_cmd(self.run_info, cmd)
+        await self._command_sender.send(self.run_info, cmd)
 
-    @overload
-    async def result(self, timeout: float | None = ..., return_type: type[_T] = ...) -> _T: ...  # noqa: ASYNC109
-
-    @overload
-    async def result(self, timeout: float | None = ..., return_type: None = ...) -> Any: ...  # noqa: ASYNC109
-
-    async def result(
-        self,
-        timeout: float | None = None,  # noqa: ASYNC109
-        return_type: type[_T] | None = None,
-    ) -> _T | Any:
+    async def result(self, timeout: float | None = None) -> Any:  # noqa: ASYNC109
         """Wait for workflow completion and return its result.
 
         timeout: client-side wait in seconds, independent of any server-side execution timeout.
-        return_type: overrides the type bound at start time; falls back to handle's bound type.
+        The result is already decoded to the return_type bound at construction, if any.
         """
-        resolved_type = return_type or self._return_type
         try:
-            raw = await asyncio.wait_for(self.future, timeout=timeout)
-            if resolved_type is not None:
-                return self._codec.from_primitive(raw, resolved_type)
-            return raw
+            return await asyncio.wait_for(self.future, timeout=timeout)
         finally:
             await self.future.stop()
 
@@ -111,7 +97,7 @@ class WorkflowHandle:
             ),
             sender_id=self._sender_id,
         )
-        await self._connection.publisher.publish_cmd(self.run_info, cmd)
+        await self._command_sender.send(self.run_info, cmd)
 
     async def terminate(self, reason: str | None = None) -> None:
         cmd = Command(
@@ -124,7 +110,7 @@ class WorkflowHandle:
             ),
             sender_id=self._sender_id,
         )
-        await self._connection.publisher.publish_cmd(self.run_info, cmd)
+        await self._command_sender.send(self.run_info, cmd)
 
     async def query(self, query_name: str) -> Any:
         raise NotImplementedError("query() not yet implemented")

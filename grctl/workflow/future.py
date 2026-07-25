@@ -1,11 +1,7 @@
 import asyncio
-import json
-import logging
 from collections.abc import Callable
-from typing import Any
-
-import msgspec
-from nats.aio.client import Client as NATSClient
+from logging import Logger
+from typing import Any, Protocol
 
 from grctl.models import (
     ErrorDetails,
@@ -19,29 +15,54 @@ from grctl.models import (
     RunTimeout,
 )
 from grctl.models.errors import WorkflowError
-from grctl.nats.history_sub import HistorySubscriber
+
+
+class HistoryListener(Protocol):
+    """Delivers a run's history events to a handler until stopped.
+
+    start() and stop() must be idempotent — safe to call more than once — since
+    WorkflowFuture may be started or stopped from more than one call site.
+    """
+
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+
+
+class HistoryListenerFactory(Protocol):
+    """Builds a HistoryListener for a run once a handler exists to bind it to.
+
+    A factory rather than a plain instance because the handler is a bound method on the
+    WorkflowFuture itself, which doesn't exist yet at the point the listener is requested.
+    """
+
+    def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> HistoryListener: ...
+
+
+class ResultDecoder(Protocol):
+    """Converts a run's raw completion value into a caller-requested type."""
+
+    def from_primitive(self, raw: Any, tp: type) -> Any: ...
 
 
 class WorkflowFuture(asyncio.Future[Any]):
     """Future for workflow run with built-in event handling and lifecycle management."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         run_info: RunInfo,
-        nc: NATSClient,
+        listener_factory: HistoryListenerFactory,
+        logger: Logger,
         payload: Any | None = None,
+        return_type: type | None = None,
+        decoder: ResultDecoder | None = None,
     ) -> None:
         super().__init__()
         self.run_info = run_info
         self.payload = payload
-        self._subscriber = HistorySubscriber(
-            nc=nc,
-            wf_id=run_info.wf_id,
-            run_id=run_info.id,
-            handler=self._handle_history_event,
-        )
-        self._subscriber_stopped = False
-        self.add_done_callback(self._schedule_subscriber_stop)
+        self._return_type = return_type
+        self._decoder = decoder
+        self._listener = listener_factory.create(run_info, self._handle_history_event)
+        self.add_done_callback(self._schedule_listener_stop)
         self._history_update_handlers: dict[HistoryKind, Callable[[HistoryEvent], None]] = {
             HistoryKind.run_scheduled: self._on_non_terminal_event,
             HistoryKind.run_started: self._on_non_terminal_event,
@@ -51,28 +72,19 @@ class WorkflowFuture(asyncio.Future[Any]):
             HistoryKind.run_cancelled: self._on_run_cancelled,
             HistoryKind.run_terminated: self._on_run_terminated,
         }
-        self._logger = logging.getLogger(f"grctl.workflow.{run_info.wf_type}")
-
-    @property
-    def is_started(self) -> bool:
-        return self._subscriber._subscription is not None  # noqa: SLF001
+        self._logger = logger
 
     async def start(self) -> None:
         """Start listening for events and publish run command."""
-        await self._subscriber.start()
+        await self._listener.start()
 
-    def _schedule_subscriber_stop(self, _: asyncio.Future) -> None:
+    def _schedule_listener_stop(self, _: asyncio.Future) -> None:
         # done_callback must be sync, so we schedule the async stop as a task.
-        if self._subscriber_stopped:
-            return
-        self._subscriber_stopped = True
-        asyncio.ensure_future(self._subscriber.stop())  # noqa: RUF006
+        asyncio.ensure_future(self._listener.stop())  # noqa: RUF006
 
     async def stop(self) -> None:
         """Stop listening for events and cleanup."""
-        if not self._subscriber_stopped:
-            self._subscriber_stopped = True
-            await self._subscriber.stop()
+        await self._listener.stop()
 
         if not self.done():
             self.cancel()
@@ -80,7 +92,7 @@ class WorkflowFuture(asyncio.Future[Any]):
     async def discard(self) -> None:
         """Release a future started in a step that ended without awaiting it.
 
-        Stops the history subscription and, if the run already settled, retrieves the
+        Stops the history listener and, if the run already settled, retrieves the
         outcome so asyncio does not warn that the exception was never retrieved. Used
         for child handles that the parent observes via a completion callback instead of
         the future.
@@ -90,14 +102,8 @@ class WorkflowFuture(asyncio.Future[Any]):
             self.exception()  # mark retrieved; value is intentionally ignored
 
     def _handle_history_event(self, event: HistoryEvent) -> None:
-        """Process a history event from the subscription."""
+        """Process a history event delivered by the listener."""
         try:
-            payload = json.dumps(msgspec.to_builtins(event), indent=2, sort_keys=True)
-            self._logger.debug(
-                "Run %s received history event %s",
-                self.run_info.id,
-                payload,
-            )
             handler = self._history_update_handlers.get(event.kind)
             if handler is None:
                 self._logger.debug(
@@ -128,7 +134,10 @@ class WorkflowFuture(asyncio.Future[Any]):
         if not isinstance(payload, RunCompleted):
             self._logger.error("Run %s completed event payload mismatch: %s", self.run_info.id, type(payload))
             return
-        self.set_result(payload.result)
+        result = payload.result
+        if self._return_type is not None and self._decoder is not None:
+            result = self._decoder.from_primitive(result, self._return_type)
+        self.set_result(result)
 
     def _on_run_failed(self, event: HistoryEvent) -> None:
         if self.done():
@@ -173,12 +182,3 @@ class WorkflowFuture(asyncio.Future[Any]):
             self._logger.error("Run %s terminated payload mismatch: %s", self.run_info.id, type(payload))
             return
         self.set_exception(asyncio.CancelledError("Workflow terminated"))
-
-
-async def create_workflow_future(
-    run_info: RunInfo,
-    nc: NATSClient,
-    payload: Any | None = None,
-) -> WorkflowFuture:
-    """Create and start a WorkflowFuture for the given WorkflowRun."""
-    return WorkflowFuture(run_info, nc, payload)
