@@ -15,7 +15,8 @@ import pytest
 from nats.client import connect
 from nats.jetstream import new as new_jetstream
 
-from grctl.client import Client, Connection
+from grctl.client import Client
+from grctl.nats.connection import Connection
 from grctl.nats.nats_client import get_nats_client
 from grctl.worker import Worker
 from grctl.workflow.workflow import Workflow

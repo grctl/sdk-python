@@ -2,7 +2,7 @@ import asyncio
 from logging import Logger
 from typing import Any, Protocol
 
-from grctl.models import GrctlAPIResponse, RunInfo
+from grctl.models import RunInfo
 from grctl.workflow.future import HistoryListenerFactory, ResultDecoder, WorkflowFuture
 
 
@@ -11,14 +11,15 @@ class WorkflowAPI(Protocol):
 
     The handle passes its intent; building/routing the underlying command is the
     implementation's concern.
+
+    Each call raises a WorkflowError if the server rejects it; a normal return
+    means the server accepted the request.
     """
 
-    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse: ...  # noqa: A002
-    async def send_event(
-        self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str
-    ) -> GrctlAPIResponse: ...
-    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse: ...
-    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse: ...
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> None: ...  # noqa: A002
+    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> None: ...
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None: ...
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None: ...
 
 
 class WorkflowHandle:
@@ -47,14 +48,23 @@ class WorkflowHandle:
         self._logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
         await self.future.start()
 
-    async def start(self) -> GrctlAPIResponse:
-        """Start the workflow future (subscribe to events and publish run command)."""
+    async def start(self) -> None:
+        """Start the workflow future (subscribe to events and publish run command).
+
+        The listener is subscribed before the command is published so no event
+        is missed; if the server rejects the start, it is torn down again rather
+        than left listening to a run that will never exist.
+        """
         self._logger.debug("Starting workflow history listener")
         await self.future.start()
         self._logger.debug(
             "Publishing start command for wf_type=%s wf_id=%s", self.run_info.wf_type, self.run_info.wf_id
         )
-        return await self._workflow_api.start_run(self.run_info, self._payload, self._sender_id)
+        try:
+            await self._workflow_api.start_run(self.run_info, self._payload, self._sender_id)
+        except Exception:
+            await self.future.stop()
+            raise
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
         self._logger.debug("Sending event '%s' to workflow %s", event_name, self.run_info.wf_id)

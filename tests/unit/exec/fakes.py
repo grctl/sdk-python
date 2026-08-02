@@ -17,7 +17,7 @@ from grctl.exec.codec import Codec
 from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.step_history import HistoryCreateInput
-from grctl.models import GrctlAPIResponse, HistoryEvent, RunInfo
+from grctl.models import HistoryEvent, RunInfo
 from grctl.nats.codec import MsgspecCodec
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
@@ -50,21 +50,17 @@ class FakeWorkflowAPI:
     def __init__(self) -> None:
         self.calls: list[tuple[str, RunInfo]] = []
 
-    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse:  # noqa: A002
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> None:  # noqa: A002
         self.calls.append(("start_run", run_info))
-        return GrctlAPIResponse(success=True)
 
-    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> GrctlAPIResponse:
+    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> None:
         self.calls.append(("send_event", run_info))
-        return GrctlAPIResponse(success=True)
 
-    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None:
         self.calls.append(("cancel_run", run_info))
-        return GrctlAPIResponse(success=True)
 
-    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None:
         self.calls.append(("terminate_run", run_info))
-        return GrctlAPIResponse(success=True)
 
 
 class FakeHistoryListener:

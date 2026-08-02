@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from grctl.models import GrctlAPIResponse, HistoryEvent, HistoryKind, RunInfo
+from grctl.models import HistoryEvent, HistoryKind, RunInfo
 from grctl.models.history import HistoryEvents
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
@@ -29,23 +29,19 @@ class FakeWorkflowAPI:
     def __init__(self) -> None:
         self.calls: list[WorkflowAPICall] = []
 
-    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse:  # noqa: A002
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> None:  # noqa: A002
         self.calls.append(WorkflowAPICall("start_run", run_info, sender_id, {"input": input}))
-        return GrctlAPIResponse(success=True)
 
-    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> GrctlAPIResponse:
+    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> None:
         self.calls.append(
             WorkflowAPICall("send_event", run_info, sender_id, {"event_name": event_name, "payload": payload})
         )
-        return GrctlAPIResponse(success=True)
 
-    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None:
         self.calls.append(WorkflowAPICall("cancel_run", run_info, sender_id, {"reason": reason}))
-        return GrctlAPIResponse(success=True)
 
-    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> None:
         self.calls.append(WorkflowAPICall("terminate_run", run_info, sender_id, {"reason": reason}))
-        return GrctlAPIResponse(success=True)
 
 
 class FakeHistoryListener:

@@ -7,28 +7,51 @@ import logging
 import secrets
 import socket
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar, overload
+from typing import Any, Protocol, TypeVar, overload
 
-import msgspec
 from ulid import ULID
 
 from grctl.models import HistoryEvent, RunInfo
-from grctl.models.errors import (
-    WorkflowAlreadyRunningError,
-    WorkflowError,
-    WorkflowNotFoundError,
-    WorkflowTypeNotRegisteredError,
-)
-from grctl.nats.connection import Connection
-from grctl.workflow.handle import WorkflowHandle
+from grctl.workflow.future import HistoryListenerFactory
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
 
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
-ErrWorkflowAlreadyRunningCode = 4001
-ErrWorkflowRunNotFoundCode = 4002
-ErrWorkflowTypeNotRegisteredCode = 4004
+
+class RunHistoryReader(Protocol):
+    """Durable store a Client reads a completed or in-flight run's events from."""
+
+    async def get_run_history(self, wf_id: str, run_id: str) -> list[HistoryEvent]: ...
+
+
+class ClientWorkflowAPI(WorkflowAPI, Protocol):
+    """The run-scoped server calls a Client makes, on top of what a handle needs.
+
+    describe_run is the client's alone: a handle is always constructed around a
+    run it already knows about.
+    """
+
+    async def describe_run(self, wf_id: str, sender_id: str) -> RunInfo: ...
+
+
+class Connection(Protocol):
+    """What a Client needs from a connection.
+
+    A structural protocol rather than an import from nats/: client/ stays free
+    of any transport dependency, and any backend (NATS, an in-memory fake for
+    tests, ...) can satisfy this without inheriting from it.
+    """
+
+    @property
+    def workflow_api(self) -> ClientWorkflowAPI: ...
+
+    @property
+    def listener_factory(self) -> HistoryListenerFactory: ...
+
+    @property
+    def history_reader(self) -> RunHistoryReader: ...
 
 
 class Client:
@@ -40,15 +63,7 @@ class Client:
 
     async def describe(self, wf_id: str) -> RunInfo:
         """Describe the latest run for a workflow ID."""
-        response = await self._connection.workflow_api.describe_run(wf_id, self.id)
-        if not response.success:
-            error_msg = response.error.message if response.error else "unknown error"
-            error_code = response.error.code if response.error else 0
-            if error_code == ErrWorkflowRunNotFoundCode:
-                raise WorkflowNotFoundError(f"workflow '{wf_id}' not found: {error_msg}")
-            raise WorkflowError(f"describe failed (code={error_code}): {error_msg}")
-
-        return msgspec.msgpack.decode(response.payload, type=RunInfo)
+        return await self._connection.workflow_api.describe_run(wf_id, self.id)
 
     @overload
     async def run_workflow(
@@ -142,15 +157,5 @@ class Client:
         )
 
         # Start the workflow future (subscribe to events and publish run command)
-        response = await handle.start()
-        if not response.success:
-            await handle.future.stop()
-            error_msg = response.error.message if response.error else "unknown error"
-            error_code = response.error.code if response.error else 0
-            if error_code == ErrWorkflowAlreadyRunningCode:
-                raise WorkflowAlreadyRunningError(f"workflow '{id}' already has an active run: {error_msg}")
-            if error_code == ErrWorkflowTypeNotRegisteredCode:
-                raise WorkflowTypeNotRegisteredError(f"no worker registered for workflow type '{type}': {error_msg}")
-            raise WorkflowError(f"start_workflow failed (code={error_code}): {error_msg}")
-
+        await handle.start()
         return handle
