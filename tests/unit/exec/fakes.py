@@ -17,7 +17,7 @@ from grctl.exec.codec import Codec
 from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.step_history import HistoryCreateInput
-from grctl.models import HistoryEvent, RunInfo
+from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
 from grctl.nats.codec import MsgspecCodec
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
@@ -102,6 +102,13 @@ def make_context(  # noqa: PLR0913
         journal,
         run_info,
         worker_id,
+        Directive(
+            id="directive-1",
+            timestamp=run_info.created_at,
+            kind=DirectiveKind.step,
+            run_info=run_info,
+            msg=Step(step_name="current_step"),
+        ),
         workflow_api=workflow_api if workflow_api is not None else FakeWorkflowAPI(),
         listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
         logger=logging.getLogger("tests.exec"),

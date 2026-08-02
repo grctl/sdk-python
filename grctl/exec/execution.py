@@ -78,6 +78,7 @@ class Execution:
             self.journal,
             self.run_info,
             worker_info.id,
+            directive,
             deps.workflow_api,
             deps.listener_factory,
             logger,

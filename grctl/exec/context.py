@@ -6,6 +6,7 @@ from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
+from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
@@ -25,6 +26,7 @@ class Context:
         journal: Journal,
         run_info: RunInfo,
         worker_id: str,
+        directive: Directive,
         workflow_api: WorkflowAPI,
         listener_factory: HistoryListenerFactory,
         logger: Logger,
@@ -35,12 +37,18 @@ class Context:
         self._journal = journal
         self._run_info = run_info
         self._worker_id = worker_id
+        self._drc_factory = DrcFactory(run_info, worker_id, directive)
         self._workflow_api = workflow_api
         self._listener_factory = listener_factory
         self._logger = logger
         self._childs = childs
         self._codec = codec
         self._parent_run = parent_run
+
+    @property
+    def next(self) -> DrcFactory:
+        """Build the directive that determines what the server does after this step."""
+        return self._drc_factory
 
     async def run(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
         task = Task(fn, args, kwargs, self._codec)
