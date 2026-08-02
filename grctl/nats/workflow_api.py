@@ -19,7 +19,7 @@ from grctl.models import (
 )
 from grctl.models.command import CommandMessage
 from grctl.nats.codec import CodecRegistry
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
 
@@ -31,9 +31,8 @@ class NatsWorkflowAPI:
     domain passes only its intent (target + payload + who is asking).
     """
 
-    def __init__(self, nc: NATSClient, manifest: NatsManifest, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
         self._nc = nc
-        self._manifest = manifest
         self._codec = codec
 
     async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse:  # noqa: A002
@@ -57,7 +56,7 @@ class NatsWorkflowAPI:
 
     async def _request(self, wf_id: str, kind: CmdKind, msg: CommandMessage, sender_id: str) -> GrctlAPIResponse:
         cmd = Command(id=str(ULID()), kind=kind, timestamp=datetime.now(UTC), msg=msg, sender_id=sender_id)
-        subject = self._manifest.api_subject(wf_id=wf_id)
+        subject = manifest.api_subject(wf_id=wf_id)
         data = command_encoder(cmd, enc_hook=self._codec.enc_hook)
         reply = await self._nc.request(subject, data, timeout=_REQUEST_TIMEOUT_SECONDS)
         return msgspec.msgpack.decode(reply.data, type=GrctlAPIResponse)

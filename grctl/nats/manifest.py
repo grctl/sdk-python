@@ -240,3 +240,11 @@ class NatsManifest:
         pattern = pattern.replace("{wf_id}", "*")
         pattern = pattern.replace("{run_id}", "*")
         return pattern.replace("{key}", "*")
+
+
+manifest = NatsManifest.load()
+"""Process-wide manifest, read once from the packaged YAML.
+
+Pure configuration with no I/O and no per-connection state, so collaborators
+import it directly instead of taking it as a constructor dependency.
+"""

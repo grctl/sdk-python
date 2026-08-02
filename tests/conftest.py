@@ -7,20 +7,13 @@ import pytest
 from grctl.logging_config import get_logger
 from grctl.models import Directive, DirectiveMessage, RunInfo
 from grctl.models.directive import DirectiveKind
-from grctl.nats.manifest import NatsManifest
 
 logging.getLogger("nats").setLevel(logging.WARNING)
 logger = get_logger(__name__)
 
 
 @pytest.fixture
-def manifest():
-    """Load NATS manifest for tests."""
-    return NatsManifest.load(yaml_path="grctl/nats/nats_manifest.yaml")
-
-
-@pytest.fixture
-def mock_kv_storage(manifest):
+def mock_kv_storage():
     """Create a mock KV storage that properly handles get/put operations.
 
     Returns a tuple of (js_mock, kv_storage_dict) where kv_storage_dict

@@ -7,6 +7,7 @@ from nats.js.errors import NotFoundError
 
 from grctl.client import Client
 from grctl.models import HistoryEvent, HistoryKind, history_decoder
+from grctl.nats.manifest import manifest
 
 _POLL_INTERVAL = 0.1
 _DEFAULT_TIMEOUT = 10.0
@@ -66,7 +67,6 @@ class HistoryAccess:
     async def direct_events(self) -> list[HistoryEvent]:
         """Return history events without creating a pull consumer."""
         connection = self._client._connection
-        manifest = connection.manifest
         subject = manifest.history_subject(wf_id=self._wf_id, run_id=self._run_id)
         stream = manifest.history_stream_name()
         manager = connection.js._jsm

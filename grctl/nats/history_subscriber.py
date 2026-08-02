@@ -7,7 +7,7 @@ from nats.js.api import DeliverPolicy
 
 from grctl.logging_config import get_logger
 from grctl.models import HistoryEvent, RunInfo, history_decoder
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 if TYPE_CHECKING:
     from nats.aio.subscription import Subscription
@@ -21,16 +21,14 @@ class HistorySubscriber:
     def __init__(
         self,
         nc: NATSClient,
-        manifest: NatsManifest,
         wf_id: str,
         run_id: str,
         handler: Callable[[HistoryEvent], None],
     ) -> None:
         self._nc = nc
         self._js = nc.jetstream()
-        self._manifest = manifest
-        self._history_subject = self._manifest.history_subject(wf_id=wf_id, run_id=run_id)
-        self._history_stream = self._manifest.history_stream_name()
+        self._history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
+        self._history_stream = manifest.history_stream_name()
         self._handler = handler
         self._subscription: Subscription | None = None
 
@@ -70,14 +68,12 @@ class HistorySubscriber:
 class NatsHistoryListenerFactory:
     """Builds a HistorySubscriber for a run, satisfying HistoryListenerFactory."""
 
-    def __init__(self, nc: NATSClient, manifest: NatsManifest) -> None:
+    def __init__(self, nc: NATSClient) -> None:
         self.nc = nc
-        self.manifest = manifest
 
     def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> HistorySubscriber:
         return HistorySubscriber(
             nc=self.nc,
-            manifest=self.manifest,
             wf_id=run_info.wf_id,
             run_id=run_info.id,
             handler=handler,

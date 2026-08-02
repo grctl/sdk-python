@@ -5,7 +5,7 @@ from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
 from grctl.models import RunInfo
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 logger = get_logger(__name__)
 
@@ -17,14 +17,13 @@ class NatsKVApi:
     exposed here — they flow through the server as step directives.
     """
 
-    def __init__(self, js: JetStreamContext, manifest: NatsManifest, run: RunInfo) -> None:
+    def __init__(self, js: JetStreamContext, run: RunInfo) -> None:
         self._js = js
         self._run = run
         self._kv = None
-        self._manifest = manifest
 
     def _make_key(self, key_name: str) -> str:
-        return self._manifest.wf_kv_key(
+        return manifest.wf_kv_key(
             self._run.wf_id,
             self._run.id,
             key_name,
@@ -37,7 +36,7 @@ class NatsKVApi:
         falls back to its Caster when the decoded value isn't already of type `ty`.
         """
         full_key = self._make_key(key)
-        stream_name = self._manifest.state_stream_name()
+        stream_name = manifest.state_stream_name()
         try:
             entry = await self._js.get_last_msg(stream_name=stream_name, subject=full_key)
             if entry is None or entry.data is None:

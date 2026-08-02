@@ -10,7 +10,7 @@ from grctl.models import (
     history_encoder,
 )
 from grctl.nats.codec import CodecRegistry
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,13 @@ class NatsHistoryAPI:
     depends only on the narrow reader/writer protocols this satisfies.
     """
 
-    def __init__(self, nc: NATSClient, manifest: NatsManifest, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
         self.js = nc.jetstream()
-        self.manifest = manifest
         self.codec = codec
 
     async def get_run_history(self, wf_id: str, run_id: str) -> list[HistoryEvent]:
-        history_subject = self.manifest.history_subject(wf_id=wf_id, run_id=run_id)
-        history_stream = self.manifest.history_stream_name()
+        history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
+        history_stream = manifest.history_stream_name()
         subscription = await self.js.pull_subscribe(
             subject=history_subject,
             stream=history_stream,
@@ -64,8 +63,8 @@ class NatsHistoryAPI:
         if history_seq_id <= 0:
             return []
 
-        history_subject = self.manifest.history_subject(wf_id=wf_id, run_id=run_id)
-        history_stream = self.manifest.history_stream_name()
+        history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
+        history_stream = manifest.history_stream_name()
         subscription = await self.js.pull_subscribe(
             subject=history_subject,
             stream=history_stream,
@@ -89,6 +88,6 @@ class NatsHistoryAPI:
         return [event for event in events if event.operation_id]
 
     async def append(self, event: HistoryEvent) -> None:
-        subject = self.manifest.history_subject(wf_id=event.wf_id, run_id=event.run_id)
+        subject = manifest.history_subject(wf_id=event.wf_id, run_id=event.run_id)
         data = history_encoder(event, enc_hook=self.codec.enc_hook)
         await self.js.publish(subject, data)

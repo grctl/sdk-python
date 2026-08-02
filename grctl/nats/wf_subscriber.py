@@ -13,7 +13,7 @@ from nats.jetstream.message import Message
 
 from grctl.models import Directive, directive_decoder
 from grctl.models.errors import WorkflowStepAlreadyExecutedError
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 from grctl.settings import get_settings
 
 DirectiveHandler = Callable[[Directive], Awaitable[asyncio.Task]]
@@ -28,13 +28,11 @@ class Subscriber:
     def __init__(
         self,
         js: JetStream,
-        manifest: NatsManifest,
         wf_types: list[str],
         directive_handler: DirectiveHandler,
         logger: logging.Logger,
     ) -> None:
         self._jetstream = js
-        self._manifest = manifest
         self._wf_types = wf_types
         self._directive_handler = directive_handler
         self._consume_tasks: list[asyncio.Task] = []
@@ -51,7 +49,7 @@ class Subscriber:
             self.logger.info(
                 "Starting subscription wf_type=%s consumer=%s",
                 wf_type,
-                self._manifest.worker_task_queue_group(wf_type),
+                manifest.worker_task_queue_group(wf_type),
             )
 
     async def _consume_loop(self, wf_type: str) -> None:
@@ -61,7 +59,7 @@ class Subscriber:
                 self.logger.info(
                     "Subscribed to worker tasks wf_type=%s consumer=%s",
                     wf_type,
-                    self._manifest.worker_task_queue_group(wf_type),
+                    manifest.worker_task_queue_group(wf_type),
                 )
                 while True:
                     batch = await consumer.fetch(
@@ -91,13 +89,13 @@ class Subscriber:
 
     async def _create_consumer(self, wf_type: str) -> PullConsumer:
         config = ConsumerConfig(
-            name=self._manifest.worker_task_queue_group(wf_type),
-            durable_name=self._manifest.worker_task_queue_group(wf_type),
-            filter_subject=self._manifest.worker_task_filter_subject(wf_type),
+            name=manifest.worker_task_queue_group(wf_type),
+            durable_name=manifest.worker_task_queue_group(wf_type),
+            filter_subject=manifest.worker_task_filter_subject(wf_type),
             ack_policy="explicit",
             ack_wait=timedelta(seconds=get_settings().nats_worker_ack_wait),
         )
-        stream = await self._jetstream.get_stream(self._manifest.state_stream_name())
+        stream = await self._jetstream.get_stream(manifest.state_stream_name())
         consumer = await stream.create_or_update_consumer(config)
         return cast("PullConsumer", consumer)
 

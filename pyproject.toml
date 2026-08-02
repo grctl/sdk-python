@@ -63,7 +63,7 @@ package = true
 module-name = "grctl"
 module-root = ""
 [tool.pytest.ini_options]
-addopts = "--ignore=tests/examples --ignore=tests/e2e --ignore=tests/spec"
+addopts = "--ignore=tests/examples --ignore=tests/e2e --ignore=tests/spec --ignore=tests/integration"
 testpaths = ["tests"]
 pythonpath = "."
 asyncio_mode = "auto"

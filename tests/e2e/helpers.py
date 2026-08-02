@@ -9,7 +9,7 @@ from nats.js.client import JetStreamContext
 from nats.js.errors import FetchTimeoutError
 
 from grctl.models import HistoryEvent, HistoryKind, history_decoder
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 _POLL_INTERVAL = 0.2
 
@@ -22,7 +22,6 @@ async def _wait_until_released(pause_event: Any | None) -> None:
 
 async def _wait_for_history_event(  # noqa: PLR0913
     js: JetStreamContext,
-    manifest: NatsManifest,
     wf_id: str,
     run_id: str,
     kind: HistoryKind,

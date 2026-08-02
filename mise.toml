@@ -29,6 +29,10 @@ run = "uv run pytest tests/unit"
 description = "Run examples tests"
 run = "uv run pytest tests/examples"
 
+[tasks."test:integration"]
+description = "Run grctl.nats integration tests (requires a running grctld)"
+run = "uv run pytest tests/integration"
+
 [tasks."test:spec1"]
 description = "Run e2e tests"
 run = "uv run pytest tests/spec/child_workflow tests/spec/context tests/spec/events"
@@ -47,4 +51,4 @@ depends = ["test:spec1", "test:spec2", "test:spec3"]
 
 [tasks.test]
 description = "Run all tests"
-depends = ["test:unit", "test:e2e", "test:examples"]
+depends = ["test:unit", "test:integration", "test:e2e", "test:examples"]

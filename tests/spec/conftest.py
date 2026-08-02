@@ -16,7 +16,6 @@ from nats.client import connect
 from nats.jetstream import new as new_jetstream
 
 from grctl.client import Client, Connection
-from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
 from grctl.worker import Worker
 from grctl.workflow.workflow import Workflow
@@ -29,12 +28,11 @@ async def nats_connection():
     # Bypass the Connection singleton so each test gets a truly independent
     # NATS client. The singleton causes races when fixture teardown (drain)
     # and the next test's setup interleave on the shared event loop.
-    manifest = NatsManifest.load()
     nc = await get_nats_client([SPEC_NATS_URL])
     js = nc.jetstream()
     js_client = await connect(SPEC_NATS_URL)
     jetstream = new_jetstream(js_client)
-    conn = Connection(nc, js, jetstream, manifest)
+    conn = Connection(nc, js, jetstream)
     yield conn
     with contextlib.suppress(Exception):
         if not nc.is_closed:

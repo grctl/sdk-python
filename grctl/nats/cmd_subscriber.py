@@ -8,7 +8,7 @@ from grctl.logging_config import get_logger
 from grctl.models import Command
 from grctl.models.api import GrctlAPIResponse
 from grctl.models.command import command_decoder
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 logger = get_logger(__name__)
 
@@ -24,18 +24,16 @@ class WorkerCmdSubscriber:
     def __init__(
         self,
         nc: NatsClient,
-        manifest: NatsManifest,
         worker_id: str,
         handler: Callable[[Command], Awaitable[bool]],
     ) -> None:
         self._nc = nc
-        self._manifest = manifest
         self._worker_id = worker_id
         self._handler = handler
         self._subscription = None
 
     async def start(self) -> None:
-        subject = self._manifest.worker_cmd_subject(self._worker_id)
+        subject = manifest.worker_cmd_subject(self._worker_id)
         self._subscription = await self._nc.subscribe(subject, cb=self._on_message)
         logger.debug("Subscribed to worker command channel: %s", subject)
 

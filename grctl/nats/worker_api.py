@@ -15,7 +15,7 @@ from grctl.models import (
     command_encoder,
 )
 from grctl.nats.codec import CodecRegistry
-from grctl.nats.manifest import NatsManifest
+from grctl.nats.manifest import manifest
 
 logger = get_logger(__name__)
 
@@ -33,9 +33,8 @@ class NatsWorkerAPI:
     Builds the Command envelope and routes it; the domain passes only its intent.
     """
 
-    def __init__(self, nc: NATSClient, manifest: NatsManifest, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
         self._nc = nc
-        self._manifest = manifest
         self._codec = codec
 
     async def register_worker(self, worker_id: str, catalog: list[WorkflowTypeDef]) -> GrctlAPIResponse:
@@ -72,7 +71,7 @@ class NatsWorkerAPI:
         raise AssertionError("unreachable")  # loop either returns or raises
 
     async def _send(self, cmd: Command) -> bytes:
-        subject = self._manifest.worker_command_subject()
+        subject = manifest.worker_command_subject()
         data = command_encoder(cmd, enc_hook=self._codec.enc_hook)
         msg = await self._nc.request(subject, data, timeout=_REQUEST_TIMEOUT_SECONDS)
         return msg.data
