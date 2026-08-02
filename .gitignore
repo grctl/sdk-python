@@ -56,4 +56,7 @@ venv.bak/
 
 # Ruff stuff:
 .ruff_cache/
+
+# Local agent guidance (AGENTS.md is a symlink to CLAUDE.md)
 CLAUDE.md
+AGENTS.md
