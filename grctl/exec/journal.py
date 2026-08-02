@@ -1,9 +1,6 @@
 import asyncio
-import hashlib
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol
-
-import msgspec
 
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import HistoryEvent, HistoryKind
@@ -83,18 +80,23 @@ class Journal:
         self._cursor: int = 0
         self._pending: dict[str, PendingOperation] = {}
 
-    def generate_operation_id(self, fn_name: str, args: dict[str, Any]) -> str:
+    def generate_operation_id(self, fn_name: str) -> str:
+        """Identify an operation by its position in the run, not by its arguments.
+
+        Replay matches on call order — the sequence number is what makes that
+        deterministic. Keeping argument values out of the identity means an id
+        never depends on how a user type happens to be serialised, so evolving
+        a serialiser cannot invalidate runs that are already in flight.
+        """
         self._seq += 1
-        data = msgspec.msgpack.encode({"args": args, "seq": self._seq})
-        digest = hashlib.sha256(data).hexdigest()[:16]
-        return f"{fn_name}:{digest}"
+        return f"{fn_name}:{self._seq}"
 
     @property
     def is_replaying(self) -> bool:
         return self._cursor < len(self.step_history)
 
     async def run(self, operation: Operation) -> Any:
-        operation_id = self.generate_operation_id(operation.name, operation.args)
+        operation_id = self.generate_operation_id(operation.name)
 
         future = await self.next(operation.acceptable_kinds, operation_id)
         if future is not None:

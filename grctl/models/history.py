@@ -144,7 +144,7 @@ class EventReceived(msgspec.Struct):
 class TaskStarted(msgspec.Struct):
     """Task execution began."""
 
-    task_id: str  # Deterministic ID: "task_name:args_hash"
+    task_id: str  # Deterministic ID: "task_name:sequence"
     task_name: str  # Function name
     args: dict[str, Any]  # Task arguments
     step_name: str  # Which step called this task

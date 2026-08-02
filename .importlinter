@@ -10,6 +10,7 @@ layers =
     grctl.exec
     grctl.workflow
     grctl.models
+    grctl.serde
 
 [importlinter:contract:nats-imports-no-grctl-modules]
 name = nats-imports-no-grctl-modules
@@ -29,6 +30,7 @@ source_modules =
     grctl.client
     grctl.exec
     grctl.models
+    grctl.serde
     grctl.worker
     grctl.workflow
 forbidden_modules =
@@ -42,6 +44,7 @@ source_modules =
     grctl.client
     grctl.exec
     grctl.models
+    grctl.serde
     grctl.worker
     grctl.workflow
 forbidden_modules =
@@ -68,5 +71,6 @@ forbidden_modules =
     grctl.workflow
     grctl.nats
     grctl.exec
+    grctl.serde
     grctl.worker
     grctl.client

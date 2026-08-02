@@ -58,7 +58,7 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
         "child-1",
         {"x": 1},
     )
-    operation_id = Journal(step_history=[], appender=FakeAppender()).generate_operation_id(op.name, op.args)
+    operation_id = Journal(step_history=[], appender=FakeAppender()).generate_operation_id(op.name)
 
     recorded_event = HistoryEvent(
         wf_id="wf-1",
