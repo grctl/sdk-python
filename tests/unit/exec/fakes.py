@@ -52,9 +52,7 @@ class FakeWorkflowAPI:
         self.calls.append(("start_run", run_info))
         return GrctlAPIResponse(success=True)
 
-    async def send_event(
-        self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str
-    ) -> GrctlAPIResponse:
+    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> GrctlAPIResponse:
         self.calls.append(("send_event", run_info))
         return GrctlAPIResponse(success=True)
 

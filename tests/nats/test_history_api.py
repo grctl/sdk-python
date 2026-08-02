@@ -6,14 +6,14 @@ from nats.js.api import AckPolicy, DeliverPolicy
 
 from grctl.models import HistoryEvent, HistoryKind, RunStarted, TaskCompleted, history_encoder
 from grctl.nats.codec import CodecRegistry
-from grctl.nats.history import NatsHistory
+from grctl.nats.history_api import NatsHistoryAPI
 from grctl.nats.manifest import NatsManifest
 
 
-def _make_history(js: AsyncMock, manifest: NatsManifest) -> NatsHistory:
+def _make_history(js: AsyncMock, manifest: NatsManifest) -> NatsHistoryAPI:
     nc = MagicMock()
     nc.jetstream = MagicMock(return_value=js)
-    return NatsHistory(nc, manifest, CodecRegistry())
+    return NatsHistoryAPI(nc, manifest, CodecRegistry())
 
 
 @pytest.mark.asyncio

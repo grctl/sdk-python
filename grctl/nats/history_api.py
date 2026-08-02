@@ -18,8 +18,8 @@ _FETCH_BATCH_SIZE = 256
 _FETCH_TIMEOUT_SECONDS = 0.25
 
 
-class NatsHistory:
-    """Single NATS impl of the history reader and writer ports.
+class NatsHistoryAPI:
+    """NATS impl of the history reader and writer ports.
 
     Reader side (get_run_history / fetch_step_history) pull-subscribes over the
     run's history subject; writer side (append) publishes onto it. The domain

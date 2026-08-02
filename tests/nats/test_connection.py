@@ -4,7 +4,7 @@ import pytest
 
 from grctl.nats.connection import Connection
 from grctl.nats.manifest import NatsManifest
-from grctl.nats.publisher import Publisher
+from grctl.nats.workflow_api import NatsWorkflowAPI
 
 
 @pytest.fixture(autouse=True)
@@ -76,4 +76,4 @@ async def test_properties_return_correct_values():
     assert conn.nc is mock_nc
     assert conn.js is mock_js
     assert conn.manifest is mock_manifest
-    assert isinstance(conn.publisher, Publisher)
+    assert isinstance(conn.workflow_api, NatsWorkflowAPI)

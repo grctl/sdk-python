@@ -9,17 +9,16 @@ from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
 from grctl.models import Command, RunInfo
+from grctl.nats.cmd_subscriber import WorkerCmdSubscriber
 from grctl.nats.codec import CodecRegistry
 from grctl.nats.directive_api import NatsDirectiveAPI
-from grctl.nats.history import NatsHistory
-from grctl.nats.history_sub import NatsHistoryListenerFactory
+from grctl.nats.history_api import NatsHistoryAPI
+from grctl.nats.history_subscriber import NatsHistoryListenerFactory
 from grctl.nats.kv_api import NatsKVApi
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
-from grctl.nats.publisher import Publisher
 from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
 from grctl.nats.worker_api import NatsWorkerAPI
-from grctl.nats.worker_cmd_subscriber import WorkerCmdSubscriber
 from grctl.nats.workflow_api import NatsWorkflowAPI
 from grctl.settings import get_settings
 
@@ -37,23 +36,21 @@ class Connection:
 
     _instance: "Connection | None" = None
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         nc: NATSClient,
         js: JetStreamContext,
         jetstream: JetStream,
         manifest: NatsManifest,
-        publisher: Publisher,
         codec: CodecRegistry | None = None,
     ) -> None:
         self._nc = nc
         self._js = js
         self._jetstream = jetstream
         self._manifest = manifest
-        self._publisher = publisher
         self._codec = codec or CodecRegistry()
 
-        self._history = NatsHistory(self._nc, self._manifest, self._codec)
+        self._history = NatsHistoryAPI(self._nc, self._manifest, self._codec)
         self._listener_factory = NatsHistoryListenerFactory(self._nc, self._manifest)
         self._workflow_api = NatsWorkflowAPI(self._nc, self._manifest, self._codec)
         self._worker_api = NatsWorkerAPI(self._nc, self._manifest, self._codec)
@@ -70,7 +67,6 @@ class Connection:
             manifest = NatsManifest.load()
             nc = await get_nats_client(servers)
             js = nc.jetstream()
-            publisher = Publisher(nc, js, manifest)
             settings = get_settings()
             js_client = await connect(
                 servers[0],
@@ -86,7 +82,7 @@ class Connection:
             logger.exception("Failed to establish Connection")
             raise
 
-        instance = cls(nc, js, jetstream, manifest, publisher, codec)
+        instance = cls(nc, js, jetstream, manifest, codec)
         cls._instance = instance
         return instance
 
@@ -111,10 +107,6 @@ class Connection:
         return self._jetstream
 
     @property
-    def publisher(self) -> Publisher:
-        return self._publisher
-
-    @property
     def codec(self) -> CodecRegistry:
         return self._codec
 
@@ -123,11 +115,11 @@ class Connection:
         logger.debug("Connection closed")
 
     @property
-    def history_reader(self) -> NatsHistory:
+    def history_reader(self) -> NatsHistoryAPI:
         return self._history
 
     @property
-    def history_writer(self) -> NatsHistory:
+    def history_writer(self) -> NatsHistoryAPI:
         return self._history
 
     @property

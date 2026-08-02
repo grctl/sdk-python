@@ -18,7 +18,6 @@ from nats.jetstream import new as new_jetstream
 from grctl.client import Client, Connection
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
-from grctl.nats.publisher import Publisher
 from grctl.worker import Worker
 from grctl.workflow.workflow import Workflow
 
@@ -33,10 +32,9 @@ async def nats_connection():
     manifest = NatsManifest.load()
     nc = await get_nats_client([SPEC_NATS_URL])
     js = nc.jetstream()
-    publisher = Publisher(nc, js, manifest)
     js_client = await connect(SPEC_NATS_URL)
     jetstream = new_jetstream(js_client)
-    conn = Connection(nc, js, jetstream, manifest, publisher)
+    conn = Connection(nc, js, jetstream, manifest)
     yield conn
     with contextlib.suppress(Exception):
         if not nc.is_closed:

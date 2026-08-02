@@ -12,8 +12,7 @@ from typing import Any, TypeVar, overload
 import msgspec
 from ulid import ULID
 
-from grctl.models import DescribeCmd, GrctlAPIResponse, HistoryEvent, RunInfo
-from grctl.models.command import CmdKind, Command
+from grctl.models import HistoryEvent, RunInfo
 from grctl.models.errors import (
     WorkflowAlreadyRunningError,
     WorkflowError,
@@ -41,18 +40,7 @@ class Client:
 
     async def describe(self, wf_id: str) -> RunInfo:
         """Describe the latest run for a workflow ID."""
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_describe,
-            timestamp=datetime.now(UTC),
-            msg=DescribeCmd(wf_id=wf_id),
-            sender_id=self.id,
-        )
-        # Use a routing-only RunInfo — publish_cmd only needs wf_id for subject routing.
-        routing_info = RunInfo(id="", wf_type="", wf_id=wf_id)
-        response_bytes = await self._connection.publisher.publish_cmd(routing_info, cmd)
-
-        response = msgspec.msgpack.decode(response_bytes, type=GrctlAPIResponse)
+        response = await self._connection.workflow_api.describe_run(wf_id, self.id)
         if not response.success:
             error_msg = response.error.message if response.error else "unknown error"
             error_code = response.error.code if response.error else 0

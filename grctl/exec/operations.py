@@ -246,9 +246,7 @@ class SendToParent:
         return frozenset({HistoryKind.parent_event_sent})
 
     async def perform(self) -> Outcome:
-        await self._workflow_api.send_event(
-            self._parent_run, self._event_name, self._payload, self._worker_id
-        )
+        await self._workflow_api.send_event(self._parent_run, self._event_name, self._payload, self._worker_id)
         return HistoryKind.parent_event_sent, ParentEventSent(
             event_name=self._event_name,
             payload=self._payload,

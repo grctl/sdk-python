@@ -5,7 +5,7 @@ import pytest
 import ulid
 
 from grctl.models import HistoryEvent, HistoryKind, RunStarted, history_encoder
-from grctl.nats.history_sub import HistorySubscriber
+from grctl.nats.history_subscriber import HistorySubscriber
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
 from grctl.settings import get_settings
