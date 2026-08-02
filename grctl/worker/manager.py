@@ -86,11 +86,7 @@ class WorkerManager:
         await self.worker_cmd_listener.start()
 
     async def stop(self, shutdown_timeout: float = 30.0) -> None:
-        """Stop accepting new work, then wait for in-flight executions (with timeout).
-
-        Does not close the connection — that's Worker's responsibility, since
-        WorkerManager doesn't own it.
-        """
+        """Stop accepting new work, then wait for in-flight executions (with timeout)."""
         if self.worker_cmd_listener is not None:
             await self.worker_cmd_listener.stop()
 

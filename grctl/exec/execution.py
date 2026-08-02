@@ -14,7 +14,7 @@ from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal, StepHistoryAppender
 from grctl.exec.kv_manager import KVManager
 from grctl.exec.task import reset_current_context, set_current_context
-from grctl.models import Directive, DirectiveKind, ErrorDetails, Fail, HistoryEvent, RunInfo, Step
+from grctl.models import Directive, ErrorDetails, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
 from grctl.models.worker import WorkerInfo
@@ -116,10 +116,8 @@ class Execution:
         except Exception as e:
             stack_trace = traceback.format_exc()
             self.logger.exception(f"Workflow execution failed for {self.step_name}")
-            outcome_directive = self.step_directive_factory.step_result(
-                DirectiveKind.fail,
-                Fail(ErrorDetails(type=type(e).__name__, message=str(e), stack_trace=stack_trace)),
-                datetime.now(UTC),
+            outcome_directive = self.step_directive_factory.fail(
+                ErrorDetails(type=type(e).__name__, message=str(e), stack_trace=stack_trace)
             )
         finally:
             if context_token is not None:
@@ -175,13 +173,12 @@ class Execution:
             duration_ms = int((datetime.now(UTC) - self.started_at).total_seconds() * 1000)
 
         pending_updates = self.kvman.get_pending_updates()
-        if pending_updates:
-            directive.kv_revs = pending_updates
 
         drc = self.step_directive_factory.step_result(
             next_msg_kind=directive.kind,
             next_msg=directive.msg,
             timestamp=datetime.now(UTC),
+            kv_updates=pending_updates,
             duration_ms=duration_ms,
         )
         await self.directive_api.send(drc)
