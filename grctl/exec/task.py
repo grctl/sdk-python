@@ -4,10 +4,10 @@ import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from grctl.exec.codec import Codec
 from grctl.exec.journal import Outcome
 from grctl.models import ErrorDetails, HistoryKind, TaskCompleted, TaskFailed
 from grctl.models.history import HistoryEvents
-from grctl.nats.codec import MsgspecCodec
 
 _ACCEPTABLE_KINDS = frozenset({HistoryKind.task_completed, HistoryKind.task_failed})
 
@@ -20,11 +20,12 @@ class Task:
         fn: Callable[..., Awaitable[Any]],
         call_args: tuple[Any, ...],
         call_kwargs: dict[str, Any],
+        codec: Codec,
     ) -> None:
         self._fn = fn
         self._call_args = call_args
         self._call_kwargs = call_kwargs
-        self._codec = MsgspecCodec()
+        self._codec = codec
 
     @property
     def name(self) -> str:
@@ -74,4 +75,4 @@ class Task:
 
         if not isinstance(payload, TaskCompleted):
             raise TypeError(f"Expected TaskCompleted payload, got {type(payload)}")
-        return payload.output["result"]
+        return self._codec.from_primitive(payload.output["result"])

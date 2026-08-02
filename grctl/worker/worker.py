@@ -11,7 +11,6 @@ import socket
 from functools import cached_property
 
 from grctl.logging_config import get_logger
-from grctl.nats.codec import CodecRegistry
 from grctl.worker.manager import Connection, WorkerManager
 from grctl.workflow.workflow import Workflow
 
@@ -42,7 +41,6 @@ class Worker:
         workflows: list[Workflow],
         connection: Connection,
         name: str | None = None,
-        codec: CodecRegistry | None = None,
     ) -> None:
         """Initialize the worker."""
         self._workflows = workflows
@@ -52,7 +50,6 @@ class Worker:
         self._startup_event = asyncio.Event()
         self._manager: WorkerManager | None = None
         self._startup_error: Exception | None = None
-        self._codec = codec or CodecRegistry()
 
     @cached_property
     def worker_name(self) -> str:

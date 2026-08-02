@@ -14,7 +14,7 @@ from grctl.models import (
     WorkflowTypeDef,
     command_encoder,
 )
-from grctl.nats.codec import CodecRegistry
+from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 
 logger = get_logger(__name__)
@@ -33,7 +33,7 @@ class NatsWorkerAPI:
     Builds the Command envelope and routes it; the domain passes only its intent.
     """
 
-    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: MsgspecCodec) -> None:
         self._nc = nc
         self._codec = codec
 

@@ -10,7 +10,7 @@ from nats.js.client import JetStreamContext
 from grctl.logging_config import get_logger
 from grctl.models import Command, RunInfo
 from grctl.nats.cmd_subscriber import WorkerCmdSubscriber
-from grctl.nats.codec import CodecRegistry
+from grctl.nats.codec import MsgspecCodec
 from grctl.nats.directive_api import NatsDirectiveAPI
 from grctl.nats.history_api import NatsHistoryAPI
 from grctl.nats.history_subscriber import NatsHistoryListenerFactory
@@ -19,6 +19,7 @@ from grctl.nats.nats_client import get_nats_client
 from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
 from grctl.nats.worker_api import NatsWorkerAPI
 from grctl.nats.workflow_api import NatsWorkflowAPI
+from grctl.serde import SerializerRegistry
 from grctl.settings import get_settings
 
 logger = get_logger(__name__)
@@ -40,12 +41,12 @@ class Connection:
         nc: NATSClient,
         js: JetStreamContext,
         jetstream: JetStream,
-        codec: CodecRegistry | None = None,
+        serializers: SerializerRegistry | None = None,
     ) -> None:
         self._nc = nc
         self._js = js
         self._jetstream = jetstream
-        self._codec = codec or CodecRegistry()
+        self._codec = MsgspecCodec(serializers)
 
         self._history = NatsHistoryAPI(self._nc, self._codec)
         self._listener_factory = NatsHistoryListenerFactory(self._nc)
@@ -53,7 +54,9 @@ class Connection:
         self._worker_api = NatsWorkerAPI(self._nc, self._codec)
 
     @classmethod
-    async def connect(cls, servers: list[str] | None = None, codec: CodecRegistry | None = None) -> "Connection":
+    async def connect(
+        cls, servers: list[str] | None = None, serializers: SerializerRegistry | None = None
+    ) -> "Connection":
         if cls._instance is not None:
             return cls._instance
 
@@ -73,12 +76,11 @@ class Connection:
             jetstream = new_jetstream(js_client)
 
             logger.debug("NATS connection established and components initialized")
-            codec = codec or CodecRegistry()
         except Exception:
             logger.exception("Failed to establish Connection")
             raise
 
-        instance = cls(nc, js, jetstream, codec)
+        instance = cls(nc, js, jetstream, serializers)
         cls._instance = instance
         return instance
 
@@ -99,7 +101,7 @@ class Connection:
         return self._jetstream
 
     @property
-    def codec(self) -> CodecRegistry:
+    def codec(self) -> MsgspecCodec:
         return self._codec
 
     async def close(self) -> None:

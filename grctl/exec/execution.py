@@ -7,6 +7,7 @@ from logging import Logger
 from typing import Any, Protocol
 
 from grctl.exec.child_tracker import ChildTracker
+from grctl.exec.codec import Codec
 from grctl.exec.context import Context
 from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal, StepHistoryAppender
@@ -23,11 +24,6 @@ class DirectiveAPI(Protocol):
     """Outbound port an Execution publishes its step directives through."""
 
     async def send(self, directive: Directive) -> None: ...
-
-
-class Codec(Protocol):
-    def from_primitive(self, raw: Any, tp: type) -> Any: ...
-    def to_primitive(self, value: Any) -> Any: ...
 
 
 @dataclass
@@ -86,6 +82,7 @@ class Execution:
             deps.listener_factory,
             logger,
             self.childs,
+            deps.codec,
             self.parent_run,
         )
 

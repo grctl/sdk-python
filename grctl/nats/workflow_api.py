@@ -18,7 +18,7 @@ from grctl.models import (
     command_encoder,
 )
 from grctl.models.command import CommandMessage
-from grctl.nats.codec import CodecRegistry
+from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
@@ -31,7 +31,7 @@ class NatsWorkflowAPI:
     domain passes only its intent (target + payload + who is asking).
     """
 
-    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: MsgspecCodec) -> None:
         self._nc = nc
         self._codec = codec
 

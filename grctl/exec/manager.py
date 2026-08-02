@@ -1,7 +1,7 @@
 import asyncio
 from typing import Protocol
 
-from grctl.exec.execution import Codec as ExecutionCodec
+from grctl.exec.codec import Codec as ExecutionCodec
 from grctl.exec.execution import DirectiveAPI, Execution, ExecutionDeps
 from grctl.exec.kv_manager import Caster, KVApi, KVManager
 from grctl.exec.step_history import HistoryWriter, StepHistory

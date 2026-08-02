@@ -9,7 +9,7 @@ from grctl.models import (
     history_decoder,
     history_encoder,
 )
-from grctl.nats.codec import CodecRegistry
+from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class NatsHistoryAPI:
     depends only on the narrow reader/writer protocols this satisfies.
     """
 
-    def __init__(self, nc: NATSClient, codec: CodecRegistry) -> None:
+    def __init__(self, nc: NATSClient, codec: MsgspecCodec) -> None:
         self.js = nc.jetstream()
         self.codec = codec
 

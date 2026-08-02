@@ -5,6 +5,7 @@ from logging import Logger
 from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
+from grctl.exec.codec import Codec
 from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
@@ -28,6 +29,7 @@ class Context:
         listener_factory: HistoryListenerFactory,
         logger: Logger,
         childs: ChildTracker,
+        codec: Codec,
         parent_run: RunInfo | None = None,
     ) -> None:
         self._journal = journal
@@ -37,10 +39,11 @@ class Context:
         self._listener_factory = listener_factory
         self._logger = logger
         self._childs = childs
+        self._codec = codec
         self._parent_run = parent_run
 
     async def run(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
-        task = Task(fn, args, kwargs)
+        task = Task(fn, args, kwargs, self._codec)
         return await self._journal.run(task)
 
     async def now(self) -> datetime:

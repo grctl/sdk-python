@@ -15,7 +15,7 @@ class KVApi(Protocol):
 
 
 class Caster(Protocol):
-    def cast(self, value: Any, ty: type[T]) -> T: ...
+    def cast(self, value: Any, ty: type[T] | None = None) -> T | Any: ...
 
 
 @dataclass(slots=True)
@@ -67,7 +67,10 @@ class KVManager:
             if val is None:
                 raise StoreKeyNotFoundError(key)
 
-            self.data[key] = val
+            # Untyped reads still need the caster: a value written by a custom
+            # serialiser is tagged on the wire and must be rebuilt, not returned
+            # as its raw envelope.
+            self.data[key] = val if ty is not None else self.caster.cast(val)
 
         val = self.data[key]
 

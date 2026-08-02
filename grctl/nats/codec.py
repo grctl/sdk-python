@@ -1,66 +1,58 @@
-from collections.abc import Callable
-from typing import Any
+"""msgpack encoding for the wire.
+
+Knows how to turn values into bytes and back. It does not know how any user
+type is represented — that belongs to `grctl.serde`, which this module reaches
+through the narrow `PrimitiveConverter` port.
+"""
+
+from typing import Any, Protocol
 
 import msgspec
 import msgspec.msgpack
-from pydantic import BaseModel
 
-type CheckFn = Callable[[type], bool]
-type EncodeFn = Callable[[Any], Any]
-type DecodeFn = Callable[[type, Any], Any]
+from grctl.serde import default_registry
 
 
-class Serializer:
-    def __init__(self) -> None:
-        self._handlers: list[tuple[CheckFn, EncodeFn, DecodeFn]] = [
-            (
-                lambda tp: issubclass(tp, BaseModel),
-                lambda obj: obj.model_dump(),
-                lambda tp, data: tp.model_validate(data),
-            )
-        ]
+class PrimitiveConverter(Protocol):
+    """Converts user types to and from msgpack-native primitives."""
 
-    def register(self, check: CheckFn, encode: EncodeFn, decode: DecodeFn) -> None:
-        # LIFO — last registered wins over earlier handlers
-        self._handlers.insert(0, (check, encode, decode))
+    def encode(self, obj: Any) -> Any: ...
 
-    def encode_custom(self, obj: Any) -> Any:
-        for check, encode, _ in self._handlers:
-            if check(type(obj)):
-                return encode(obj)
-        raise TypeError(f"Unsupported type: {type(obj)}")
+    def decode(self, tp: type, raw: Any) -> Any: ...
 
-    def decode_custom(self, tp: type, obj: Any) -> Any:
-        for check, _, decode in self._handlers:
-            if check(tp):
-                return decode(tp, obj)
-        raise TypeError(f"Unsupported type: {tp}")
+    def rehydrate(self, raw: Any) -> Any: ...
 
 
 class MsgspecCodec:
-    def __init__(self, serializer: Serializer | None = None) -> None:
-        self._serializer = serializer or Serializer()
+    """Bridges msgspec's enc_hook/dec_hook onto a serialiser registry."""
+
+    def __init__(self, serializers: PrimitiveConverter | None = None) -> None:
+        self._serializers: PrimitiveConverter = serializers if serializers is not None else default_registry()
 
     @property
-    def serializer(self) -> Serializer:
-        return self._serializer
-
-    def register(self, check: CheckFn, encode: EncodeFn, decode: DecodeFn) -> None:
-        self._serializer.register(check, encode, decode)
+    def serializers(self) -> PrimitiveConverter:
+        return self._serializers
 
     def enc_hook(self, obj: Any) -> Any:
-        return self._serializer.encode_custom(obj)
+        return self._serializers.encode(obj)
 
     def dec_hook(self, tp: type, obj: Any) -> Any:
-        return self._serializer.decode_custom(tp, obj)
+        return self._serializers.decode(tp, obj)
 
     def to_primitive(self, value: Any) -> Any:
         return msgspec.to_builtins(value, enc_hook=self.enc_hook)
 
-    def from_primitive(self, raw: Any, tp: type) -> Any:
+    def from_primitive(self, raw: Any, tp: type | None = None) -> Any:
+        """Convert primitives back into `tp`.
+
+        Without a target type the tags carried in the value drive the decode as
+        far as they can, so callers never see raw envelopes.
+        """
+        if tp is None or tp is Any:
+            return self._serializers.rehydrate(raw)
         return msgspec.convert(raw, tp, dec_hook=self.dec_hook)
 
-    def cast(self, value: Any, ty: type) -> Any:
+    def cast(self, value: Any, ty: type | None = None) -> Any:
         """Alias for from_primitive — satisfies KVManager's Caster protocol."""
         return self.from_primitive(value, ty)
 
@@ -68,8 +60,4 @@ class MsgspecCodec:
         return msgspec.msgpack.encode(value, enc_hook=self.enc_hook)
 
     def decode(self, data: bytes) -> Any:
-        return msgspec.msgpack.decode(data)
-
-
-class CodecRegistry(MsgspecCodec):
-    """Backward-compatible msgspec codec with built-in custom serializers."""
+        return self._serializers.rehydrate(msgspec.msgpack.decode(data))

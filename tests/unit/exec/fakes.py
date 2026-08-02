@@ -13,10 +13,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
+from grctl.exec.codec import Codec
 from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import GrctlAPIResponse, HistoryEvent, RunInfo
+from grctl.nats.codec import MsgspecCodec
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
 DEFAULT_WORKER_ID = "worker-1"
@@ -92,6 +94,7 @@ def make_context(  # noqa: PLR0913
     worker_id: str = DEFAULT_WORKER_ID,
     parent_run: RunInfo | None = None,
     childs: ChildTracker | None = None,
+    codec: Codec | None = None,
 ) -> Context:
     """Build a Context wired to fakes, over a fresh journal seeded with `step_history`.
 
@@ -107,6 +110,7 @@ def make_context(  # noqa: PLR0913
         listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
         logger=logging.getLogger("tests.exec"),
         childs=childs if childs is not None else ChildTracker(),
+        codec=codec if codec is not None else MsgspecCodec(),
         parent_run=parent_run,
     )
 
