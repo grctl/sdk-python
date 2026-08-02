@@ -51,7 +51,7 @@ def _sleep_replay_worker(wf_type: str, pause_event=None) -> None:
 
         wf = Workflow(workflow_type=wf_type)
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -106,7 +106,7 @@ async def test_sleep_records_duration_in_history(worker, grctl_client) -> None:
 
     wf = Workflow(workflow_type=unique_workflow_type("spec_ctx_det_sleep_hist"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         await ctx.sleep(sleep_duration)
         return ctx.next.complete("done")

@@ -23,7 +23,7 @@ async def test_task_retries_on_failure_and_succeeds(worker, grctl_client) -> Non
             raise RuntimeError(f"transient attempt {counter['value']}")
         return "ok"
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await flaky()
         return ctx.next.complete(result)
@@ -50,7 +50,7 @@ async def test_task_fails_after_exhausting_max_attempts(worker, grctl_client) ->
         counter["value"] += 1
         raise RuntimeError(f"attempt {counter['value']}")
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await always_fail()
         return ctx.next.complete(result)
@@ -77,7 +77,7 @@ async def test_task_without_retry_policy_fails_immediately(worker, grctl_client)
         counter["value"] += 1
         raise RuntimeError("fails immediately")
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await no_retry_task()
         return ctx.next.complete(result)
@@ -111,7 +111,7 @@ async def test_non_retryable_error_is_not_retried(worker, grctl_client) -> None:
         counter["value"] += 1
         raise ValueError("not retryable")
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await non_retryable_task()
         return ctx.next.complete(result)
@@ -149,7 +149,7 @@ async def test_retryable_errors_filter_only_retries_matching_type(worker, grctl_
             raise TimeoutError("temporary timeout")
         return "ok"
 
-    @timeout_wf.start()
+    @timeout_wf.step(start=True)
     async def timeout_start(ctx: Context) -> Directive:
         result = await timeout_task()
         return ctx.next.complete(result)
@@ -166,7 +166,7 @@ async def test_retryable_errors_filter_only_retries_matching_type(worker, grctl_
         value_counter["value"] += 1
         raise ValueError("wrong error type")
 
-    @value_wf.start()
+    @value_wf.step(start=True)
     async def value_start(ctx: Context) -> Directive:
         result = await value_task()
         return ctx.next.complete(result)
@@ -201,7 +201,7 @@ async def test_cancelled_error_is_never_retried(worker, grctl_client) -> None:
     async def cancelled_task() -> str:
         raise asyncio.CancelledError("cancel now")
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await cancelled_task()
         return ctx.next.complete(result)

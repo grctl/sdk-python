@@ -7,8 +7,8 @@ import msgspec
 import ulid
 from pydantic import BaseModel
 
+from grctl.exec.kv_manager import StoreKeyNotFoundError
 from grctl.worker import Context
-from grctl.worker.store import StoreKeyNotFoundError
 from grctl.workflow import Directive, Workflow
 from tests.spec.workflows import unique_workflow_type
 
@@ -28,9 +28,9 @@ class StructKVPayload(msgspec.Struct):
 async def test_kv_value_persists_across_steps(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_ctx_kv_persist"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
-        ctx.store.put("key", "hello")
+        ctx.store.set("key", "hello")
         return ctx.next.step(read_step)
 
     @wf.step()
@@ -52,16 +52,16 @@ async def test_kv_multiple_types_persist(worker, grctl_client) -> None:
     pydantic_val = PydanticKVPayload(label="hello", count=5)
     struct_val = StructKVPayload(label="world", count=7)
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
-        ctx.store.put("str_key", "text")
-        ctx.store.put("int_key", 42)
-        ctx.store.put("float_key", 3.14)
-        ctx.store.put("bool_key", True)
-        ctx.store.put("list_key", [1, 2, 3])
-        ctx.store.put("dict_key", {"a": 1})
-        ctx.store.put("pydantic_key", pydantic_val)
-        ctx.store.put("struct_key", struct_val)
+        ctx.store.set("str_key", "text")
+        ctx.store.set("int_key", 42)
+        ctx.store.set("float_key", 3.14)
+        ctx.store.set("bool_key", True)
+        ctx.store.set("list_key", [1, 2, 3])
+        ctx.store.set("dict_key", {"a": 1})
+        ctx.store.set("pydantic_key", pydantic_val)
+        ctx.store.set("struct_key", struct_val)
         return ctx.next.step(read_step)
 
     @wf.step()
@@ -108,7 +108,7 @@ async def test_kv_multiple_types_persist(worker, grctl_client) -> None:
 async def test_kv_get_raises_for_missing_key(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_ctx_kv_missing"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.step(read_step)
 

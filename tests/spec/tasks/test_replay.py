@@ -70,7 +70,7 @@ def _replay_worker(wf_type: str, pause_event=None) -> None:
         async def simple_task() -> str:
             return "done"
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -100,7 +100,7 @@ def _replay_exception_worker(wf_type: str, pause_event=None) -> None:
         async def failing_task() -> str:
             raise ValueError("original error")
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -133,7 +133,7 @@ def _replay_cancelled_worker(wf_type: str, pause_event=None) -> None:
         async def cancelled_task() -> str:
             raise asyncio.CancelledError("cancel now")
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -166,7 +166,7 @@ def _ndet_input_v1_worker(wf_type: str, pause_event=None) -> None:
         async def greet(value: str) -> str:
             return value.upper()
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -196,7 +196,7 @@ def _ndet_input_v2_worker(wf_type: str) -> None:
         async def greet(value: str) -> str:
             return value.upper()
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -228,7 +228,7 @@ def _ndet_v1_worker(wf_type: str, pause_event=None) -> None:
         async def task_b() -> str:
             return "b"
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -263,7 +263,7 @@ def _ndet_v2_worker(wf_type: str) -> None:
         async def task_b() -> str:
             return "b"
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 

@@ -37,7 +37,7 @@ class StructPayload(msgspec.Struct):
 async def test_workflow_accepts_primitive_inputs(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_primitive_input"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: Any) -> Directive:
         assert value == payload
         assert type(value) is type(payload)
@@ -65,7 +65,7 @@ async def test_workflow_accepts_primitive_inputs(worker, grctl_client: Client, p
 async def test_workflow_accepts_dict_and_list_inputs(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_container_input"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: Any) -> Directive:
         assert value == payload
         assert type(value) is type(payload)
@@ -87,7 +87,7 @@ async def test_workflow_roundtrips_msgspec_struct(worker, grctl_client: Client) 
     struct = StructPayload(name="struct-input", count=13, tags=["one", "two"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_struct_input"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: StructPayload) -> Directive:
         assert isinstance(value, StructPayload)
         assert value == struct
@@ -110,7 +110,7 @@ async def test_workflow_roundtrips_pydantic(worker, grctl_client: Client) -> Non
     model = PydanticPayload(name="pydantic-input", count=11, tags=["one", "two"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_pydantic_input"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: PydanticPayload) -> Directive:
         assert isinstance(value, PydanticPayload)
         assert value == model
@@ -141,7 +141,7 @@ async def test_workflow_roundtrips_pydantic(worker, grctl_client: Client) -> Non
 async def test_workflow_returns_primitive_output(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_primitive_output"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.complete(payload)
 
@@ -168,7 +168,7 @@ async def test_workflow_returns_primitive_output(worker, grctl_client: Client, p
 async def test_workflow_returns_dict_and_list_output(worker, grctl_client: Client, payload: Any) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_container_output"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.complete(payload)
 
@@ -188,7 +188,7 @@ async def test_start_workflow_result_deserializes_pydantic_output(worker, grctl_
     model = PydanticPayload(name="pydantic-handle", count=31, tags=["x", "y"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_handle_pydantic"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: PydanticPayload) -> Directive:
         return ctx.next.complete(value)
 
@@ -211,7 +211,7 @@ async def test_start_workflow_result_deserializes_struct_output(worker, grctl_cl
     struct = StructPayload(name="struct-handle", count=37, tags=["x", "y"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_handle_struct"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: StructPayload) -> Directive:
         return ctx.next.complete(value)
 
@@ -233,7 +233,7 @@ async def test_start_workflow_result_deserializes_struct_output(worker, grctl_cl
 async def test_workflow_returns_none_output(worker, grctl_client: Client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_none_output"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.complete(None)
 

@@ -20,9 +20,8 @@ from grctl.models import (
     UuidRecorded,
 )
 from grctl.models.history import HistoryEvents
-from grctl.workflow import WorkflowHandle
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
 
 
 class Now:

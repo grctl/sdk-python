@@ -17,7 +17,7 @@ async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_cli
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.step(child_send)
 
@@ -26,12 +26,12 @@ async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_cli
         await ctx.send_to_parent("result_ready", payload="child-result")
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         return ctx.next.wait()
 
-    @parent_wf.event(name="result_ready")
+    @parent_wf.step(event=True, name="result_ready")
     async def on_result(ctx: Context, payload: str) -> Directive:
         return ctx.next.complete(payload)
 
@@ -54,11 +54,11 @@ async def test_run_child_returns_child_result(worker, grctl_client: Client) -> N
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete("child-result")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         result = await ctx.run_child(child_wf_type, f"{ctx.run.wf_id}-child")
         return ctx.next.complete(result)
@@ -82,11 +82,11 @@ async def test_parent_can_await_child_future_in_same_step(worker, grctl_client: 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete("child-result")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         result = await handle.future

@@ -2,15 +2,16 @@
 root_package = grctl
 include_external_packages = True
 
-[importlinter:contract:layered-architecture]
-name = layered-architecture
-type = layers
-layers =
-    grctl.worker | grctl.client
+[importlinter:contract:workflow-exec-boundaries]
+name = workflow-exec-boundaries
+type = forbidden
+source_modules =
     grctl.exec
     grctl.workflow
-    grctl.models
-    grctl.serde
+forbidden_modules =
+    grctl.client
+    grctl.worker
+    grctl.nats
 
 [importlinter:contract:nats-imports-no-grctl-modules]
 name = nats-imports-no-grctl-modules

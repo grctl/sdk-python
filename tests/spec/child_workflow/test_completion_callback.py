@@ -23,11 +23,11 @@ async def test_on_completed_step_receives_child_result(worker, grctl_client: Cli
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete("child-result")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()
@@ -56,11 +56,11 @@ async def test_on_completed_step_receives_child_error(worker, grctl_client: Clie
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         raise RuntimeError("child boom")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()
@@ -90,11 +90,11 @@ async def test_on_completed_step_receives_pydantic_result(worker, grctl_client: 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete(ChildResult(value="child-result", count=3))
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()

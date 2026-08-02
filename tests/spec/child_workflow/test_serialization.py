@@ -36,13 +36,13 @@ async def test_child_accepts_primitive_inputs(worker, grctl_client: Client, payl
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context, value: Any) -> Directive:
         assert value == payload
         assert type(value) is type(payload)
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", workflow_input={"value": payload})
         await handle.future
@@ -74,13 +74,13 @@ async def test_child_accepts_dict_and_list_inputs(worker, grctl_client: Client, 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context, value: Any) -> Directive:
         assert value == payload
         assert type(value) is type(payload)
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", workflow_input={"value": payload})
         await handle.future
@@ -106,13 +106,13 @@ async def test_child_accepts_struct_input(worker, grctl_client: Client) -> None:
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context, value: StructPayload) -> Directive:
         assert isinstance(value, StructPayload)
         assert value == struct
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", workflow_input={"value": struct})
         await handle.future
@@ -146,11 +146,11 @@ async def test_child_future_returns_primitive_output(worker, grctl_client: Clien
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete(payload)
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         result = await handle.future
@@ -178,11 +178,11 @@ async def test_child_future_returns_struct_output(worker, grctl_client: Client) 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.complete(expected)
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         raw = await handle.future
@@ -219,17 +219,17 @@ async def test_send_to_parent_preserves_primitive_payload(worker, grctl_client: 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         await ctx.send_to_parent("result", payload=expected_payload)
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         return ctx.next.wait()
 
-    @parent_wf.event(name="result")
+    @parent_wf.step(event=True, name="result")
     async def on_result(ctx: Context, payload: Any) -> Directive:
         assert payload == expected_payload
         assert type(payload) is type(expected_payload)
@@ -255,17 +255,17 @@ async def test_send_to_parent_preserves_struct_payload(worker, grctl_client: Cli
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         await ctx.send_to_parent("result", payload=struct)
         return ctx.next.complete("child-done")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         return ctx.next.wait()
 
-    @parent_wf.event(name="result")
+    @parent_wf.step(event=True, name="result")
     async def on_result(ctx: Context, payload: StructPayload) -> Directive:
         assert isinstance(payload, StructPayload)
         assert payload == struct

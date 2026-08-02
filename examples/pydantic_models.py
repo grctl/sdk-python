@@ -5,7 +5,7 @@ Demonstrates that grctl serializes Pydantic models transparently at every bounda
   - start step arg  — start(ctx, order: OrderRequest)
   - task input      — enrich_order(order: OrderRequest)
   - task output     — returns EnrichedOrder
-  - store           — ctx.store.put/get with Pydantic types
+  - store           — ctx.store.set/get with Pydantic types
   - event send      — send("confirm_payment", PaymentConfirmation(...))
   - event step arg  — confirm_payment(ctx, confirmation: PaymentConfirmation)
   - result          — ctx.next.complete(OrderResult(...))
@@ -18,7 +18,8 @@ from datetime import timedelta
 import ulid
 from pydantic import BaseModel
 
-from grctl.client import Client, Connection, get_logger, setup_logging
+from grctl.client import Client, get_logger, setup_logging
+from grctl.nats import Connection
 from grctl.worker import Context, Worker, task
 from grctl.workflow import Directive, Workflow
 
@@ -73,15 +74,15 @@ async def enrich_order(order: OrderRequest) -> EnrichedOrder:
     )
 
 
-@orders.start()
+@orders.step(start=True)
 async def start(ctx: Context, order: OrderRequest) -> Directive:
     enriched = await enrich_order(order)
     logger.info(f"Enriched order: total={enriched.total} {enriched.currency}")
-    ctx.store.put("enriched_order", enriched)
+    ctx.store.set("enriched_order", enriched)
     return ctx.next.wait()
 
 
-@orders.event()
+@orders.step(event=True)
 async def confirm_payment(ctx: Context, confirmation: PaymentConfirmation) -> Directive:
     enriched = await ctx.store.get("enriched_order", EnrichedOrder)
     logger.info(f"Payment {confirmation.status} for order {enriched.order_id}: {confirmation.paid_amount}")

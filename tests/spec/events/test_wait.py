@@ -16,7 +16,7 @@ from tests.spec.workflows import make_waiting_event_workflow, unique_workflow_ty
 def _make_timeout_workflow(has_timeout_handler: bool = False) -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_timeout"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         if has_timeout_handler:
             return ctx.next.wait(timeout=timedelta(milliseconds=100), on_timeout=on_timeout)

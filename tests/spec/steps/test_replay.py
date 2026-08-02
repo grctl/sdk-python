@@ -62,7 +62,7 @@ def _start_step_replay_worker(wf_type: str, pause_event=None) -> None:
         async def simple_task() -> str:
             return "done"
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             result = await simple_task()
             if pause_event is not None:

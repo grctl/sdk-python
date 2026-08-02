@@ -4,8 +4,10 @@ from datetime import timedelta
 
 import ulid
 
-from grctl.client import Client, Connection, setup_logging
-from grctl.worker import Context, StoreKeyNotFoundError, Worker, task
+from grctl.client import Client, setup_logging
+from grctl.exec.kv_manager import StoreKeyNotFoundError
+from grctl.nats import Connection
+from grctl.worker import Context, Worker, task
 from grctl.workflow import Directive, Workflow
 
 setup_logging(level=logging.DEBUG)
@@ -29,23 +31,23 @@ async def call_farewell_api(name: str) -> str:
     return f"Goodbye, {name}!"
 
 
-@greet_events.start()
+@greet_events.step(start=True)
 async def start(ctx: Context, name: str) -> Directive:
-    ctx.store.put("name", name)
+    ctx.store.set("name", name)
     logger.info(f"Initialized workflow for: {name}")
     return ctx.next.wait()
 
 
-@greet_events.event()
+@greet_events.step(event=True)
 async def greet(ctx: Context, title: str) -> Directive:
     name = await ctx.store.get("name", str)
     greeting = await call_greeting_api(f"{title} {name}")
-    ctx.store.put("greeting", greeting)
-    ctx.store.put("message", greeting)
+    ctx.store.set("greeting", greeting)
+    ctx.store.set("message", greeting)
     return ctx.next.wait()
 
 
-@greet_events.event()
+@greet_events.step(event=True)
 async def farewell(ctx: Context, farewell_note: str) -> Directive:
     try:
         greeting = await ctx.store.get("greeting", str)
@@ -57,7 +59,7 @@ async def farewell(ctx: Context, farewell_note: str) -> Directive:
     res = await call_farewell_api(name)
 
     message = f"{greeting} {res} {farewell_note}"
-    ctx.store.put("message", message)
+    ctx.store.set("message", message)
 
     logger.info(f"Final message: {message}")
     return ctx.next.complete(message)

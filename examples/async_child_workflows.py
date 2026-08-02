@@ -5,8 +5,10 @@ from datetime import timedelta
 
 import ulid
 
-from grctl.client import Client, Connection, setup_logging
-from grctl.worker import Context, StoreKeyNotFoundError, Worker, task
+from grctl.client import Client, setup_logging
+from grctl.exec.kv_manager import StoreKeyNotFoundError
+from grctl.nats import Connection
+from grctl.worker import Context, Worker, task
 from grctl.workflow import Directive, Workflow
 
 setup_logging(level=logging.DEBUG)
@@ -37,9 +39,9 @@ async def compute_b(input_data: str) -> str:
 # ============================================================================
 
 
-@task_a_wf.start()
+@task_a_wf.step(start=True)
 async def task_a_start(ctx: Context, input_data: str) -> Directive:
-    ctx.store.put("input_data", input_data)
+    ctx.store.set("input_data", input_data)
     ctx.logger.info(f"Task A workflow started with input: {input_data}")
     return ctx.next.step(task_a_process)
 
@@ -48,7 +50,7 @@ async def task_a_start(ctx: Context, input_data: str) -> Directive:
 async def task_a_process(ctx: Context) -> Directive:
     input_data = await ctx.store.get("input_data", str)
     result = await compute_a(input_data)
-    ctx.store.put("result", result)
+    ctx.store.set("result", result)
     ctx.logger.info(f"Task A completed with result: {result}")
     await ctx.send_to_parent(event_name="task_a_completed", payload={"result": result})
     return ctx.next.complete({"result": result})
@@ -59,9 +61,9 @@ async def task_a_process(ctx: Context) -> Directive:
 # ============================================================================
 
 
-@task_b_wf.start()
+@task_b_wf.step(start=True)
 async def task_b_start(ctx: Context, input_data: str) -> Directive:
-    ctx.store.put("input_data", input_data)
+    ctx.store.set("input_data", input_data)
     ctx.logger.info(f"Task B workflow started with input: {input_data}")
     return ctx.next.step(task_b_process)
 
@@ -70,7 +72,7 @@ async def task_b_start(ctx: Context, input_data: str) -> Directive:
 async def task_b_process(ctx: Context) -> Directive:
     input_data = await ctx.store.get("input_data", str)
     result = await compute_b(input_data)
-    ctx.store.put("result", result)
+    ctx.store.set("result", result)
     ctx.logger.info(f"Task B completed with result: {result}")
     await ctx.send_to_parent(event_name="task_b_completed", payload={"result": result})
     return ctx.next.complete({"result": result})
@@ -81,10 +83,10 @@ async def task_b_process(ctx: Context) -> Directive:
 # ============================================================================
 
 
-@orchestrator_wf.start()
+@orchestrator_wf.step(start=True)
 async def orchestrator_start(ctx: Context, input_a: str, input_b: str) -> Directive:
-    ctx.store.put("input_a", input_a)
-    ctx.store.put("input_b", input_b)
+    ctx.store.set("input_a", input_a)
+    ctx.store.set("input_b", input_b)
     ctx.logger.info(f"Orchestrator starting children with inputs: {input_a}, {input_b}")
 
     task_a_id = f"task-a-{ulid.ULID()}"
@@ -109,10 +111,10 @@ async def orchestrator_start(ctx: Context, input_a: str, input_b: str) -> Direct
     return ctx.next.wait()
 
 
-@orchestrator_wf.event(name="task_a_completed")
+@orchestrator_wf.step(event=True, name="task_a_completed")
 async def on_task_a_completed(ctx: Context, result: str) -> Directive:
     ctx.logger.info("Received Task A result: %s", result)
-    ctx.store.put("task_a_result", result)
+    ctx.store.set("task_a_result", result)
 
     try:
         await ctx.store.get("task_b_result", str)
@@ -122,10 +124,10 @@ async def on_task_a_completed(ctx: Context, result: str) -> Directive:
     return await _finish_orchestrator(ctx)
 
 
-@orchestrator_wf.event(name="task_b_completed")
+@orchestrator_wf.step(event=True, name="task_b_completed")
 async def on_task_b_completed(ctx: Context, result: str) -> Directive:
     ctx.logger.info("Received Task B result: %s", result)
-    ctx.store.put("task_b_result", result)
+    ctx.store.set("task_b_result", result)
 
     try:
         await ctx.store.get("task_a_result", str)
@@ -142,7 +144,7 @@ async def _finish_orchestrator(ctx: Context) -> Directive:
     task_b_result = await ctx.store.get("task_b_result", str)
 
     message = f"Orchestrator completed: input_a={input_a} -> {task_a_result}, input_b={input_b} -> {task_b_result}"
-    ctx.store.put("message", message)
+    ctx.store.set("message", message)
     ctx.logger.info("Final message: %s", message)
     return ctx.next.complete(message)
 

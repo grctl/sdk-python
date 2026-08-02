@@ -44,12 +44,12 @@ async def step_three_task(name: str, value: int) -> str:
 def make_three_step_workflow(prefix: str = "spec_three_step") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, name: str, value: int) -> Directive:
-        ctx.store.put("name", name)
-        ctx.store.put("value", value)
+        ctx.store.set("name", name)
+        ctx.store.set("value", value)
         result = await step_one_task(name, value)
-        ctx.store.put("step_one", result)
+        ctx.store.set("step_one", result)
         return ctx.next.step(second_step)
 
     @wf.step()
@@ -57,7 +57,7 @@ def make_three_step_workflow(prefix: str = "spec_three_step") -> Workflow:
         name = await ctx.store.get("name", str)
         value = await ctx.store.get("value", int)
         result = await step_two_task(name, value)
-        ctx.store.put("step_two", result)
+        ctx.store.set("step_two", result)
         return ctx.next.step(third_step)
 
     @wf.step()

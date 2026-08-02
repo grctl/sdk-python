@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from logging import Logger
@@ -12,12 +13,14 @@ from grctl.exec.context import Context
 from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal, StepHistoryAppender
 from grctl.exec.kv_manager import KVManager
+from grctl.exec.task import reset_current_context, set_current_context
 from grctl.models import Directive, DirectiveKind, ErrorDetails, Fail, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
 from grctl.models.worker import WorkerInfo
 from grctl.workflow.future import HistoryListenerFactory
 from grctl.workflow.handle import WorkflowAPI
+from grctl.workflow.workflow import StepInfo
 
 
 class DirectiveAPI(Protocol):
@@ -37,6 +40,7 @@ class ExecutionDeps:
     workflow_api: WorkflowAPI
     listener_factory: HistoryListenerFactory
     step_history: list[HistoryEvent]
+    step_infos: Mapping[str, StepInfo]
 
 
 class Execution:
@@ -72,13 +76,14 @@ class Execution:
         self.directive_api = deps.directive_api
         self.codec = deps.codec
         self.logger = logger
-        self.step_directive_factory = DrcFactory(self.run_info, worker_info.id, directive)
+        self.step_directive_factory = DrcFactory(self.run_info, worker_info.id, directive, deps.step_infos)
         self.journal = Journal(self.step_history, self.history_appender)
         self.context = Context(
             self.journal,
             self.run_info,
             worker_info.id,
-            directive,
+            self.step_directive_factory,
+            self.kvman,
             deps.workflow_api,
             deps.listener_factory,
             logger,
@@ -100,8 +105,10 @@ class Execution:
         handler = self.handler_config.handler
         payload = self.get_serialised_handler_payload()
         outcome_directive: Directive
+        context_token = None
         try:
             self.is_executing = True
+            context_token = set_current_context(self.context)
             if payload is None:
                 outcome_directive = await handler(self.context)
             else:
@@ -115,6 +122,8 @@ class Execution:
                 datetime.now(UTC),
             )
         finally:
+            if context_token is not None:
+                reset_current_context(context_token)
             self.is_executing = False
             # Always release child handles started in this step, even when the handler
             # raised, so an unawaited future never warns or leaks its subscription.

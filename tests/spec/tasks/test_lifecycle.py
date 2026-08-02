@@ -20,7 +20,7 @@ async def test_successful_task_emits_started_and_completed(worker, grctl_client)
     async def succeed(value: str) -> str:
         return value
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: str) -> Directive:
         result = await succeed(value)
         return ctx.next.complete(result)
@@ -58,7 +58,7 @@ async def test_retried_task_emits_attempt_failed_events(worker, grctl_client) ->
             raise RuntimeError(f"attempt {call_count}")
         return "ok"
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await flaky()
         return ctx.next.complete(result)
@@ -96,7 +96,7 @@ async def test_failed_task_emits_started_and_failed(worker, grctl_client) -> Non
     async def always_fail() -> str:
         raise RuntimeError("permanent failure")
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await always_fail()
         return ctx.next.complete(result)

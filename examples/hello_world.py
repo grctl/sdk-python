@@ -4,9 +4,10 @@ from datetime import timedelta
 
 import ulid
 
-from grctl.client import Client, Connection, get_logger, setup_logging
-from grctl.worker import Context, Worker, task
-from grctl.workflow import Directive, Workflow
+from grctl.client import Client, get_logger, setup_logging
+from grctl.nats import Connection
+from grctl.worker import Worker
+from grctl.workflow import Context, Directive, Workflow, task
 
 setup_logging(level=logging.DEBUG)
 logger = get_logger(__name__)
@@ -21,13 +22,13 @@ async def call_greeting_api(name: str) -> str:
     return f"Hello, {name}!"
 
 
-@hello.start()
+@hello.step(start=True)
 async def start(ctx: Context, name: str) -> Directive:
     logger.info(f"Initialized workflow for: {name}")
-    ctx.store.put("name", name)
+    ctx.store.set("name", name)
     greeting = await call_greeting_api(name)
     message = f"{greeting}"
-    ctx.store.put("message", message)
+    ctx.store.set("message", message)
 
     return ctx.next.complete(message)
 

@@ -130,12 +130,12 @@ class Connection:
     def build_directive_api(self, run_info: RunInfo) -> NatsDirectiveAPI:
         return NatsDirectiveAPI(self._js, run_info, enc_hook=self._codec.enc_hook)
 
-    def build_worker_cmd_subscriber(
+    def build_worker_cmd_listener(
         self, worker_id: str, handler: Callable[[Command], Awaitable[bool]]
     ) -> WorkerCmdSubscriber:
         return WorkerCmdSubscriber(self._nc, worker_id, handler)
 
-    def build_task_subscriber(
+    def build_exec_job_listener(
         self, wf_types: list[str], directive_handler: DirectiveHandler, logger: logging.Logger
     ) -> Subscriber:
         return Subscriber(self._jetstream, wf_types, directive_handler, logger)

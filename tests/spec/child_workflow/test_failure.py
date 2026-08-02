@@ -21,11 +21,11 @@ async def test_failed_child_raises_workflow_error_on_parent_step(worker, grctl_c
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         raise ValueError("child failed")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         await handle.future
@@ -49,11 +49,11 @@ async def test_child_failure_message_is_preserved(worker, grctl_client: Client) 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         raise ValueError("specific child error message")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
         await handle.future
@@ -77,7 +77,7 @@ async def test_child_step_timeout_triggers_parent_on_completed_callback(worker, 
     child_wf = Workflow(workflow_type=child_wf_type)
     parent_wf = Workflow(workflow_type=parent_wf_type)
 
-    @child_wf.start()
+    @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
         return ctx.next.step(child_blocking_step)
 
@@ -86,7 +86,7 @@ async def test_child_step_timeout_triggers_parent_on_completed_callback(worker, 
         await asyncio.sleep(60)
         return ctx.next.complete("unreachable")
 
-    @parent_wf.start()
+    @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
         await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_child_done)
         return ctx.next.wait()

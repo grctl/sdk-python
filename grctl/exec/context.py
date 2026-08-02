@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from logging import Logger
-from typing import Any
+from typing import Any, Protocol, TypeVar, overload
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
@@ -10,12 +10,36 @@ from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
-from grctl.models import Directive, RunInfo
-from grctl.workflow import WorkflowHandle
+from grctl.models import Directive, ErrorDetails, RunInfo
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
 
 StepHandler = Callable[..., Awaitable[Directive]]
+T = TypeVar("T")
+
+
+class Next(Protocol):
+    """Build the workflow transition returned by a step handler."""
+
+    def step(self, step_fn: StepHandler) -> Directive: ...
+
+    def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive: ...
+
+    def complete(self, result: Any = None) -> Directive: ...
+
+    def fail(self, error: ErrorDetails) -> Directive: ...
+
+
+class Store(Protocol):
+    """Read and stage updates to durable workflow state."""
+
+    @overload
+    async def get(self, key: str) -> Any: ...
+
+    @overload
+    async def get(self, key: str, ty: type[T]) -> T: ...
+
+    def set(self, key: str, value: Any) -> None: ...
 
 
 class Context:
@@ -26,7 +50,8 @@ class Context:
         journal: Journal,
         run_info: RunInfo,
         worker_id: str,
-        directive: Directive,
+        drc_factory: DrcFactory,
+        store: Store,
         workflow_api: WorkflowAPI,
         listener_factory: HistoryListenerFactory,
         logger: Logger,
@@ -37,7 +62,8 @@ class Context:
         self._journal = journal
         self._run_info = run_info
         self._worker_id = worker_id
-        self._drc_factory = DrcFactory(run_info, worker_id, directive)
+        self._drc_factory = drc_factory
+        self._store = store
         self._workflow_api = workflow_api
         self._listener_factory = listener_factory
         self._logger = logger
@@ -46,9 +72,14 @@ class Context:
         self._parent_run = parent_run
 
     @property
-    def next(self) -> DrcFactory:
-        """Build the directive that determines what the server does after this step."""
+    def next(self) -> Next:
+        """Build the workflow transition returned by this step."""
         return self._drc_factory
+
+    @property
+    def store(self) -> Store:
+        """Read and update durable state for this workflow run."""
+        return self._store
 
     async def run(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
         task = Task(fn, args, kwargs, self._codec)
@@ -119,11 +150,7 @@ class Context:
         await handle.future.start()
         return await handle.result(timeout=timeout)
 
-    @staticmethod
-    def _callback_step_name(on_completed_step: StepHandler | None) -> str | None:
+    def _callback_step_name(self, on_completed_step: StepHandler | None) -> str | None:
         if on_completed_step is None:
             return None
-        step_name = getattr(on_completed_step, "__name__", None)
-        if not step_name:
-            raise ValueError("on_completed_step must be a named handler function.")
-        return step_name
+        return self._drc_factory.step_name(on_completed_step)

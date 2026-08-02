@@ -46,11 +46,11 @@ class PydanticPayload(BaseModel):
 async def test_event_payload_preserved(worker, grctl_client: Client, payload: Any, send_payload: Any) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_serial"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def receive(ctx: Context, value: Any = None) -> Directive:
         return ctx.next.complete(value)
 
@@ -86,11 +86,11 @@ async def test_event_payload_msgspec_struct_preserved(worker, grctl_client: Clie
     struct = StructPayload(name="struct-event", count=7, tags=["a", "b"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_serial_struct"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def receive(ctx: Context, value: StructPayload) -> Directive:
         return ctx.next.complete(value)
 
@@ -119,11 +119,11 @@ async def test_event_payload_pydantic_model_preserved(worker, grctl_client: Clie
     model = PydanticPayload(name="pydantic-event", count=11, tags=["x", "y"])
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_serial_pydantic"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def receive(ctx: Context, value: PydanticPayload) -> Directive:
         return ctx.next.complete(value)
 

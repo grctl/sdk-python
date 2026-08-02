@@ -16,15 +16,15 @@ from tests.spec.workflows import unique_workflow_type
 async def test_multiple_event_types_dispatch_to_correct_handlers(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_dispatch_multi"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def approve(ctx: Context) -> Directive:
         return ctx.next.complete("approve")
 
-    @wf.event()
+    @wf.step(event=True)
     async def reject(ctx: Context) -> Directive:
         return ctx.next.complete("reject")
 
@@ -66,15 +66,15 @@ async def test_multiple_event_types_dispatch_to_correct_handlers(worker, grctl_c
 async def test_event_handler_can_loop_back_to_wait(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_event_dispatch_loopback"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def first_event(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def second_event(ctx: Context) -> Directive:
         return ctx.next.complete("done-after-second")
 
@@ -113,11 +113,11 @@ async def test_event_handler_can_loop_back_to_wait(worker, grctl_client) -> None
 async def test_event_timeout_fails_workflow(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_dispatch_event_timeout_with_handler"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event(timeout=timedelta(milliseconds=100))
+    @wf.step(event=True, timeout=timedelta(milliseconds=100))
     async def finish(ctx: Context) -> Directive:
         await asyncio.sleep(1)
         return ctx.next.complete("done")

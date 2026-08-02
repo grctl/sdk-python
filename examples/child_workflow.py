@@ -5,7 +5,8 @@ from datetime import timedelta
 
 import ulid
 
-from grctl.client import Client, Connection, setup_logging
+from grctl.client import Client, setup_logging
+from grctl.nats import Connection
 from grctl.worker import Context, Worker, task
 from grctl.workflow import Directive, Workflow
 
@@ -43,9 +44,9 @@ async def record_transaction(transaction_id: str, amount: float) -> str:
 # ============================================================================
 
 
-@payment_wf.start()
+@payment_wf.step(start=True)
 async def payment_start(ctx: Context, amount: float) -> Directive:
-    ctx.store.put("amount", amount)
+    ctx.store.set("amount", amount)
     ctx.logger.info(f"Payment workflow started for amount ${amount}")
     return ctx.next.step(payment_process)
 
@@ -54,7 +55,7 @@ async def payment_start(ctx: Context, amount: float) -> Directive:
 async def payment_process(ctx: Context) -> Directive:
     amount = await ctx.store.get("amount", float)
     transaction_id = await process_payment(amount)
-    ctx.store.put("transaction_id", transaction_id)
+    ctx.store.set("transaction_id", transaction_id)
     return ctx.next.step(payment_record)
 
 
@@ -64,7 +65,7 @@ async def payment_record(ctx: Context) -> Directive:
     amount = await ctx.store.get("amount", float)
 
     status = await record_transaction(transaction_id, amount)
-    ctx.store.put("status", status)
+    ctx.store.set("status", status)
 
     ctx.logger.info(f"Payment completed with status: {status}")
 
@@ -78,11 +79,11 @@ async def payment_record(ctx: Context) -> Directive:
 # ============================================================================
 
 
-@order_wf.start()
+@order_wf.step(start=True)
 async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
     validated_id, validated_amount = await validate_order(order_id, amount)
-    ctx.store.put("order_id", validated_id)
-    ctx.store.put("amount", validated_amount)
+    ctx.store.set("order_id", validated_id)
+    ctx.store.set("amount", validated_amount)
     ctx.logger.info(f"Order workflow started for order {order_id}")
 
     payment_workflow_id = f"payment-{validated_id}-{ulid.ULID()}"
@@ -93,7 +94,7 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
         workflow_timeout=timedelta(minutes=1),
     )
 
-    ctx.store.put("payment_workflow_id", payment_handle.run_info.id)
+    ctx.store.set("payment_workflow_id", payment_handle.run_info.id)
     ctx.logger.info(
         "Started child payment workflow %s for order %s",
         payment_handle.run_info.id,
@@ -102,16 +103,16 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
     return ctx.next.wait()
 
 
-@order_wf.event(name="payment_completed")
+@order_wf.step(event=True, name="payment_completed")
 async def handle_payment_result(ctx: Context, status: str, transaction_id: str) -> Directive:
     order_id = await ctx.store.get("order_id", str)
 
     ctx.logger.info(f"Order {order_id} received payment result: {status}")
 
-    ctx.store.put("payment_status", status)
+    ctx.store.set("payment_status", status)
 
     message = f"Order {order_id} completed with payment status: {status} transaction_id: {transaction_id}"
-    ctx.store.put("message", message)
+    ctx.store.set("message", message)
 
     ctx.logger.info(f"Final message: {message}")
     return ctx.next.complete(message)

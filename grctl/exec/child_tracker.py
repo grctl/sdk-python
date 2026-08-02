@@ -1,4 +1,4 @@
-from grctl.workflow import WorkflowHandle
+from grctl.workflow.handle import WorkflowHandle
 
 
 class ChildTracker:

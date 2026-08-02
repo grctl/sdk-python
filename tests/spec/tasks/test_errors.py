@@ -21,7 +21,7 @@ def _build_retry_exhausted_workflow() -> tuple[Workflow, dict[str, int]]:
         counter["value"] += 1
         raise RuntimeError(f"retry exhausted attempt {counter['value']}")
 
-    @wf.start()
+    @wf.step(start=True)
     async def retry_exhausted_start(ctx: Context) -> Directive:
         result = await retry_exhausted_task()
         return ctx.next.complete(result)
@@ -45,7 +45,7 @@ def _build_non_retryable_workflow() -> tuple[Workflow, dict[str, int]]:
         counter["value"] += 1
         raise ValueError("fail immediately")
 
-    @wf.start()
+    @wf.step(start=True)
     async def non_retryable_start(ctx: Context) -> Directive:
         result = await non_retryable_failure_task()
         return ctx.next.complete(result)
@@ -60,7 +60,7 @@ def _build_basic_error_workflow() -> Workflow:
     async def basic_failure_task() -> str:
         raise ValueError("task exploded: code=123")
 
-    @wf.start()
+    @wf.step(start=True)
     async def basic_error_start(ctx: Context) -> Directive:
         result = await basic_failure_task()
         return ctx.next.complete(result)
@@ -75,7 +75,7 @@ def _build_cancelled_workflow() -> Workflow:
     async def cancelled_task() -> str:
         raise asyncio.CancelledError("cancel now")
 
-    @wf.start()
+    @wf.step(start=True)
     async def cancelled_start(ctx: Context) -> Directive:
         result = await cancelled_task()
         return ctx.next.complete(result)

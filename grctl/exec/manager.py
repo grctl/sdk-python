@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Mapping
 from typing import Protocol
 
 from grctl.exec.codec import Codec as ExecutionCodec
@@ -10,7 +11,7 @@ from grctl.models import Directive, HistoryEvent, RunInfo, Step
 from grctl.models.command import WorkflowTypeDef
 from grctl.models.errors import WorkflowStepAlreadyExecutedError
 from grctl.models.worker import WorkerInfo
-from grctl.workflow import Workflow
+from grctl.workflow import StepInfo, Workflow
 from grctl.workflow.future import HistoryListenerFactory
 from grctl.workflow.handle import WorkflowAPI
 
@@ -145,16 +146,14 @@ class ExecutionManager:
             self.executions.clear()
 
     async def build_execution(self, directive: Directive) -> Execution:
-        # Only Step directives are supported so far — Start/Event/Cancel handling needs
-        # exec/workflow realignment (see project/notes/sdk-rewrite.md) before this can
-        # resolve a handler_config for them.
+        # The server normalizes start and event ingress to worker-facing Step directives.
         if not isinstance(directive.msg, Step):
             raise NotImplementedError(f"Execution construction for directive kind '{directive.kind}' not supported")
 
         run_info = directive.run_info
         workflow = self.registry.get(run_info.wf_type)
         handler_config = workflow.step_handler(directive.msg.step_name)
-        deps = await self.build_deps(directive)
+        deps = await self.build_deps(directive, workflow.step_infos)
 
         return Execution(
             worker_info=self.worker_info,
@@ -164,7 +163,7 @@ class ExecutionManager:
             logger=logger,
         )
 
-    async def build_deps(self, directive: Directive) -> ExecutionDeps:
+    async def build_deps(self, directive: Directive, step_infos: Mapping[str, StepInfo]) -> ExecutionDeps:
         """Wrap the connection's raw collaborators into the domain objects an Execution needs."""
         run_info = directive.run_info
 
@@ -187,6 +186,7 @@ class ExecutionManager:
             workflow_api=self.connection.workflow_api,
             listener_factory=self.connection.listener_factory,
             step_history=await self.load_step_history(directive),
+            step_infos=step_infos,
         )
 
     async def load_step_history(self, directive: Directive) -> list[HistoryEvent]:

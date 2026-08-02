@@ -52,11 +52,11 @@ def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.complete("child-done")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             return ctx.next.step(parent_main)
 
@@ -91,7 +91,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.step(child_send)
 
@@ -102,12 +102,12 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("child-done")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
-        @parent_wf.event(name="child_done")
+        @parent_wf.step(event=True, name="child_done")
         async def on_child_done(ctx: Context) -> Directive:
             return ctx.next.complete("parent-done")
 
@@ -131,7 +131,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.step(child_send)
 
@@ -142,16 +142,16 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("sent")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
-        @parent_wf.event(name="status_v1")
+        @parent_wf.step(event=True, name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:
             return ctx.next.complete("v1")
 
-        @parent_wf.event(name="status_v2")
+        @parent_wf.step(event=True, name="status_v2")
         async def on_status_v2(ctx: Context) -> Directive:
             return ctx.next.complete("v2")
 
@@ -172,7 +172,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.step(child_send)
 
@@ -181,16 +181,16 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
             await ctx.send_to_parent("status_v2")  # different event name: diverges from history
             return ctx.next.complete("sent")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
             return ctx.next.wait()
 
-        @parent_wf.event(name="status_v1")
+        @parent_wf.step(event=True, name="status_v1")
         async def on_status_v1(ctx: Context) -> Directive:
             return ctx.next.complete("v1")
 
-        @parent_wf.event(name="status_v2")
+        @parent_wf.step(event=True, name="status_v2")
         async def on_status_v2(ctx: Context) -> Directive:
             return ctx.next.complete("v2")
 
@@ -214,11 +214,11 @@ def _ndet_child_id_v1_worker(parent_wf_type: str, child_wf_type: str, pause_even
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.complete("child-done")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             return ctx.next.step(parent_main)
 
@@ -249,11 +249,11 @@ def _ndet_child_id_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.complete("child-done")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             return ctx.next.step(parent_main)
 
@@ -289,7 +289,7 @@ def _run_child_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
         child_wf = Workflow(workflow_type=child_wf_type)
         parent_wf = Workflow(workflow_type=parent_wf_type)
 
-        @child_wf.start()
+        @child_wf.step(start=True)
         async def child_start(ctx: Context) -> Directive:
             return ctx.next.step(child_work)
 
@@ -299,7 +299,7 @@ def _run_child_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("child-done")
 
-        @parent_wf.start()
+        @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
             return ctx.next.step(parent_run)
 

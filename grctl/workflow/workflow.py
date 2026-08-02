@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import inspect
 import typing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from grctl.models.command import EventDef, WorkflowTypeDef
-from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec
+from grctl.models.command import StepDef, WorkflowTypeDef
+from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec, StepKind
 
 
 def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
     sig = inspect.signature(fn)
-    # get_type_hints resolves string annotations produced by `from __future__ import annotations`
     hints = typing.get_type_hints(fn)
 
     params: dict[str, type] = {}
@@ -20,7 +20,7 @@ def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
     for name, param in sig.parameters.items():
         if first:
             first = False
-            continue  # skip ctx
+            continue
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             raise TypeError(f"Handler '{fn.__name__}' must not use *args or **kwargs")  # ty:ignore[unresolved-attribute]
         if name not in hints:
@@ -30,51 +30,28 @@ def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
     return HandlerSpec(params=params)
 
 
+@dataclass(frozen=True)
+class StepInfo:
+    """Runtime metadata needed to construct a transition to a registered step."""
+
+    timeout_ms: int
+
+
 class Workflow:
-    """Workflow definition with decorator-based handler registration.
+    """Workflow definition with one registry for all mutating step handlers.
 
-    Similar to FastAPI's app instance, this class allows you to define
-    workflow handlers using decorators. The workflow instance is then
-    registered with a Worker for execution.
-
-    All handler functions receive a RunContext as their first parameter.
-
-    Example:
-        # Create workflow instance
-        my_workflow = Workflow(name="my_workflow")
-
-        # Define start handler
-        @my_workflow.start()
-        async def start(ctx: RunContext, input: dict) -> str:
-            return "completed"
-
-        # Define step handler
-        @my_workflow.step()
-        async def my_step(ctx: RunContext, message: str) -> None:
-            logger.info(f"Notified: {message}")
-
+    A step is internal by default. ``start=True`` marks the workflow creation
+    step, and ``event=True`` makes the step externally triggerable.
     """
 
     def __init__(self, workflow_type: str) -> None:
         self._type = workflow_type
-        self.start_handler: HandlerConfig | None = None
-        self._run_handler: Callable[..., Any] | None = None
-        self._step_handlers: dict[str, HandlerConfig] = {}
-        self._on_event_handlers: dict[str, HandlerConfig] = {}
-        self._update_handlers: dict[str, Callable[..., Any]] = {}
+        self._steps: dict[str, HandlerConfig] = {}
         self._query_handlers: dict[str, Callable[..., Any]] = {}
 
     @property
     def workflow_type(self) -> str:
-        """Get the workflow type.
-
-        Returns:
-            The workflow type.
-
-        Raises:
-            ValueError: If workflow type has not been set.
-
-        """
+        """Return the registered workflow type."""
         if self._type is None:
             msg = "Workflow type not set. Provide type in constructor or decorate a function first."
             raise ValueError(msg)
@@ -82,182 +59,93 @@ class Workflow:
 
     @property
     def start_step_name(self) -> str | None:
-        """Handler name of the start step, or None if no start handler is registered."""
-        if self.start_handler is None:
-            return None
-        return self.start_handler.handler.__name__  # ty:ignore[unresolved-attribute]
+        """Return the registered start-step name, if one exists."""
+        for name, config in self._steps.items():
+            if config.kind is StepKind.start:
+                return name
+        return None
 
     @property
     def step_names(self) -> list[str]:
-        """Names of all registered step handlers."""
-        return list(self._step_handlers.keys())
+        """Return the names of all registered steps."""
+        return list(self._steps)
 
     @property
     def event_names(self) -> list[str]:
-        """Names of all registered event handlers."""
-        return list(self._on_event_handlers.keys())
-
-    @property
-    def event_defs(self) -> list[EventDef]:
-        """EventDef for each registered event handler."""
-        defs = []
-        for name, config in self._on_event_handlers.items():
-            timeout_ms = int(config.timeout.total_seconds() * 1000) if config.timeout else 0
-            defs.append(EventDef(name=name, timeout_ms=timeout_ms))
-        return defs
+        """Return the names of externally triggerable steps."""
+        return [name for name, config in self._steps.items() if config.kind is StepKind.external]
 
     @property
     def query_names(self) -> list[str]:
-        """Names of all registered query handlers."""
-        return list(self._query_handlers.keys())
+        """Return the names of registered query handlers."""
+        return list(self._query_handlers)
 
     def step_handler(self, name: str) -> HandlerConfig:
         """Look up a registered step handler by name."""
-        config = self._step_handlers.get(name)
+        config = self._steps.get(name)
         if config is None:
             raise ValueError(f"Step handler '{name}' not registered in workflow '{self.workflow_type}'")
         return config
 
+    @property
+    def step_infos(self) -> Mapping[str, StepInfo]:
+        """Return registered step metadata used by directive construction."""
+        return {
+            name: StepInfo(timeout_ms=int(config.timeout.total_seconds() * 1000) if config.timeout else 0)
+            for name, config in self._steps.items()
+        }
+
     def type_def(self) -> WorkflowTypeDef:
-        """Build the structural definition of this workflow, as reported to the server."""
-        start_timeout = self.start_handler.timeout if self.start_handler else None
-        start_step_timeout_ms = int(start_timeout.total_seconds() * 1000) if start_timeout is not None else 0
+        """Build the structural definition reported to the server."""
+        step_defs = [
+            StepDef(
+                name=name,
+                timeout_ms=int(config.timeout.total_seconds() * 1000) if config.timeout else 0,
+                external=config.kind is StepKind.external,
+            )
+            for name, config in self._steps.items()
+        ]
         return WorkflowTypeDef(
             type=self.workflow_type,
             start_step=self.start_step_name or "",
-            steps=self.step_names,
-            events=self.event_defs,
+            step_defs=step_defs,
             queries=self.query_names,
-            start_step_timeout_ms=start_step_timeout_ms,
         )
-
-    def start(self, timeout: timedelta | None = None) -> Callable[[HandlerF], HandlerF]:
-        """Decorate the workflow start handler.
-
-        The start handler is called once when a workflow is first created.
-        It's designed to initialize the workflow state. There can only be one start handler
-        per workflow.
-
-        Args:
-            timeout: Start step timeout. Sent to the server at registration.
-            If None, the server uses its configured default.
-
-        Returns:
-            Decorator function that registers the start handler.
-
-        Raises:
-            ValueError: If a start handler is already registered.
-
-        Example:
-            @workflow.start()
-            async def start(ctx: RunContext, order_id: str) -> Directive:
-                ctx.store.put("order_id", order_id)
-                return ctx.next.complete()
-
-        """
-
-        def decorator(func: HandlerF) -> HandlerF:
-            if self.start_handler is not None:
-                msg = f"Workflow already has a start handler: {self.start_handler.handler.__name__}"  # ty:ignore[unresolved-attribute]
-                raise ValueError(msg)
-
-            spec = get_handler_spec(func)
-            self.start_handler = HandlerConfig(handler=func, spec=spec, timeout=timeout)
-            return func
-
-        return decorator
 
     def step(
         self,
-        timeout: timedelta | None = None,
-    ) -> Callable[[HandlerF], HandlerF]:
-        """Decorate the workflow step handler.
-
-        Step represents a discrete unit of work within the workflow. Each step can create a checkpoint.
-        There can be multiple step handlers per workflow, each identified by its function name.
-        Each step handler must have a unique name.
-
-        Args:
-            timeout: Per-step timeout. Overrides the workflow-level timeout for this step.
-
-        Returns:
-            Decorator function that registers step handler.
-
-        Raises:
-            ValueError: If a step handler is already registered.
-
-        Example:
-            @workflow.step()
-            async def my_step_name(ctx: RunContext, name: str) -> Directive:
-                return ctx.next.complete(f"Hello {name}")
-
-        """
-
-        def decorator(func: HandlerF) -> HandlerF:
-            if self._step_handlers.get(func.__name__) is not None:
-                msg = f"Step handler '{func.__name__}' already registered"
-                raise ValueError(msg)
-
-            step_timeout = timeout if timeout is not None else timedelta(seconds=10)
-            spec = get_handler_spec(func)
-
-            self._step_handlers[func.__name__] = HandlerConfig(
-                handler=func,
-                spec=spec,
-                timeout=step_timeout,
-            )
-            return func
-
-        return decorator
-
-    def event(
-        self,
+        *,
+        start: bool = False,
+        event: bool = False,
         name: str | None = None,
         timeout: timedelta | None = None,
     ) -> Callable[[HandlerF], HandlerF]:
-        """Decorate workflow event handlers.
+        """Decorate a workflow step handler.
 
-        Events are asynchronous, fire-and-forget notifications sent to
-        a running workflow. They can mutate workflow state.
-
-        Args:
-            name: Optional event name. If not provided, uses function name.
-            timeout: How long to wait for this event before timing out.
-
-        Returns:
-            Decorator function that registers the on_event handler.
-
-        Raises:
-            ValueError: If an event with this name is already registered.
-
-        Example:
-            @workflow.event()
-            async def approve(ctx: RunContext) -> Directive:
-                return ctx.next.complete()
-
-            @workflow.event(name="custom_event")
-            async def my_handler(ctx: RunContext, data: str) -> Directive:
-                return ctx.next.complete()
-
-            @workflow.event(timeout=timedelta(seconds=2))
-            async def timed_event(ctx: RunContext) -> Directive:
-                return ctx.next.complete()
-
+        Steps are internal continuations by default. Set ``start=True`` for
+        the workflow creation step or ``event=True`` for an externally
+        triggerable step. ``timeout`` is the handler execution timeout; when
+        omitted, the server applies its configured default.
         """
 
         def decorator(func: HandlerF) -> HandlerF:
-            event_name = name or func.__name__
+            if start and event:
+                raise ValueError("A step cannot be both a start step and an event step")
 
-            if event_name in self._on_event_handlers:
-                msg = f"Event '{event_name}' already registered"
-                raise ValueError(msg)
+            step_name = name or func.__name__
+            if step_name in self._steps:
+                raise ValueError(f"Step handler '{step_name}' already registered")
+            if start and self.start_step_name is not None:
+                raise ValueError(f"Workflow already has a start handler: '{self.start_step_name}'")
 
-            spec = get_handler_spec(func)
-            self._on_event_handlers[event_name] = HandlerConfig(
+            kind = StepKind.start if start else StepKind.external if event else StepKind.internal
+            self._steps[step_name] = HandlerConfig(
                 handler=func,
-                spec=spec,
+                spec=get_handler_spec(func),
+                kind=kind,
                 timeout=timeout,
             )
+            func.__grctl_step_name__ = step_name  # ty:ignore[unresolved-attribute]
             return func
 
         return decorator
@@ -266,34 +154,12 @@ class Workflow:
         self,
         name: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Decorate workflow query handlers.
-
-        Queries are read-only operations that return workflow state
-        without modifying it.
-
-        Args:
-            name: Optional query name. If not provided, uses function name.
-
-        Returns:
-            Decorator function that registers the query handler.
-
-        Raises:
-            ValueError: If a query with this name is already registered.
-
-        Example:
-            @workflow.query()
-            async def get_status(ctx: RunContext) -> str:
-                return "running"
-
-        """
+        """Decorate a read-only workflow query handler."""
 
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             query_name = name or func.__name__  # ty:ignore[unresolved-attribute]
-
             if query_name in self._query_handlers:
-                msg = f"Query '{query_name}' already registered"
-                raise ValueError(msg)
-
+                raise ValueError(f"Query '{query_name}' already registered")
             self._query_handlers[query_name] = func
             return func
 

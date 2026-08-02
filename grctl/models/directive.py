@@ -31,7 +31,7 @@ class Start(msgspec.Struct):
     """Request to start workflow execution."""
 
     input: Any | None = None
-    timeout_ms: int | None = 3_000  # 3 seconds in nanoseconds (Go time.Duration)
+    timeout_ms: int | None = 0
 
 
 class Cancel(msgspec.Struct):
@@ -51,7 +51,7 @@ class Step(msgspec.Struct):
     """Request to execute a specific step in a workflow."""
 
     step_name: str
-    timeout_ms: int | None = 3_000  # 3 seconds in nanoseconds (Go time.Duration)
+    timeout_ms: int | None = 0
     payload: Any | None = None
 
 

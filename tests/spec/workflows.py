@@ -24,7 +24,7 @@ def unique_workflow_type(prefix: str) -> str:
 def make_completing_workflow(result: Any = "ok", prefix: str = "spec_completing") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.complete(result)
 
@@ -34,7 +34,7 @@ def make_completing_workflow(result: Any = "ok", prefix: str = "spec_completing"
 def make_failing_workflow(message: str = "step exploded", prefix: str = "spec_failing") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         raise ValueError(message)
 
@@ -44,7 +44,7 @@ def make_failing_workflow(message: str = "step exploded", prefix: str = "spec_fa
 def make_echo_workflow(prefix: str = "spec_echo") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: str) -> Directive:
         result = await echo_task(value)
         return ctx.next.complete(result)
@@ -55,11 +55,11 @@ def make_echo_workflow(prefix: str = "spec_echo") -> Workflow:
 def make_waiting_event_workflow(prefix: str = "spec_waiting_event") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.wait()
 
-    @wf.event()
+    @wf.step(event=True)
     async def finish(ctx: Context, result: str = "done") -> Directive:
         return ctx.next.complete(result)
 
@@ -69,7 +69,7 @@ def make_waiting_event_workflow(prefix: str = "spec_waiting_event") -> Workflow:
 def make_two_step_workflow(prefix: str = "spec_two_step") -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.step(second_step)
 
@@ -87,7 +87,7 @@ def make_slow_step_workflow(
 ) -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.step(slow_step)
 
@@ -105,7 +105,7 @@ def make_blocking_step_workflow(
 ) -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         return ctx.next.step(blocking_step)
 
@@ -123,7 +123,7 @@ def make_blocking_start_workflow(
 ) -> Workflow:
     wf = Workflow(workflow_type=unique_workflow_type(prefix))
 
-    @wf.start(timeout=start_timeout)
+    @wf.step(start=True, timeout=start_timeout)
     async def start(ctx: Context) -> Directive:
         await asyncio.sleep(60)
         return ctx.next.complete("unreachable")
@@ -144,7 +144,7 @@ async def echo_task(value: str) -> str:
 two_step_wf = Workflow(workflow_type="spec_step_two_step")
 
 
-@two_step_wf.start()
+@two_step_wf.step(start=True)
 async def two_step_start(ctx: Context) -> Directive:
     return ctx.next.step(two_step_second)
 

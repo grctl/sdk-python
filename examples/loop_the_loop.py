@@ -4,7 +4,8 @@ from datetime import timedelta
 
 import ulid
 
-from grctl.client import Client, Connection, get_logger, setup_logging
+from grctl.client import Client, get_logger, setup_logging
+from grctl.nats import Connection
 from grctl.worker import Context, Worker, task
 from grctl.workflow import Directive, Workflow
 
@@ -20,9 +21,9 @@ async def incr(c: int) -> int:
     return c + 1
 
 
-@ltl.start()
+@ltl.step(start=True)
 async def start(ctx: Context, start: int) -> Directive:
-    ctx.store.put("c", start)
+    ctx.store.set("c", start)
     return ctx.next.step(incr_step)
 
 
@@ -32,7 +33,7 @@ async def incr_step(ctx: Context) -> Directive:
 
     for _ in range(10):
         c = await incr(c)
-        ctx.store.put("c", c)
+        ctx.store.set("c", c)
 
     if c >= 1000:  # noqa: PLR2004
         return ctx.next.complete(c)

@@ -39,7 +39,7 @@ def _random_replay_worker(wf_type: str, pause_event=None) -> None:
 
         wf = Workflow(workflow_type=wf_type)
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -87,7 +87,7 @@ async def test_random_returns_same_value_on_replay(grctl_client) -> None:
 async def test_random_records_value_in_history(worker, grctl_client) -> None:
     wf = Workflow(workflow_type=unique_workflow_type("spec_ctx_det_random_hist"))
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         value = await ctx.random()
         return ctx.next.complete(value)

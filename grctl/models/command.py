@@ -58,11 +58,12 @@ class WorkerTerminateRunCmd(msgspec.Struct):
     run_id: str
 
 
-class EventDef(msgspec.Struct, kw_only=True):
-    """Per-event timeout config carried through registration."""
+class StepDef(msgspec.Struct):
+    """Per-step registration metadata sent to the server."""
 
     name: str
     timeout_ms: int = 0
+    external: bool = False
 
 
 class WorkflowTypeDef(msgspec.Struct):
@@ -73,10 +74,8 @@ class WorkflowTypeDef(msgspec.Struct):
 
     type: str
     start_step: str
-    steps: list[str]
-    events: list[EventDef]
+    step_defs: list[StepDef]
     queries: list[str]
-    start_step_timeout_ms: int = 0
 
 
 class RegisterCmd(msgspec.Struct):

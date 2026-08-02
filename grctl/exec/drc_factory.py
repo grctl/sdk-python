@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -19,6 +19,7 @@ from grctl.models import (
     Wait,
 )
 from grctl.models.directive import NextMessage
+from grctl.workflow.workflow import StepInfo
 
 StepHandler = Callable[..., Awaitable[Directive]]
 
@@ -31,21 +32,24 @@ class DrcFactory:
         run_info: RunInfo,
         worker_id: str,
         processed_directive: Directive,
+        step_infos: Mapping[str, StepInfo],
     ) -> None:
         self._run_info = run_info
         self._worker_id = worker_id
         self._processed_directive = processed_directive
+        self._step_infos = step_infos
 
     def step(self, step_fn: StepHandler) -> Directive:
         """Transition the run to a named workflow step."""
-        step_name = getattr(step_fn, "__name__", None)
-        if not step_name:
-            raise ValueError("Step function must have a __name__ attribute.")
-        return self._next(DirectiveKind.step, Step(step_name=step_name))
+        step_name = self.step_name(step_fn)
+        return self._next(
+            DirectiveKind.step,
+            Step(step_name=step_name, timeout_ms=self._step_infos[step_name].timeout_ms),
+        )
 
     def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive:
         """Park the run until an event arrives or an optional timeout fires."""
-        timeout_step_name = getattr(on_timeout, "__name__", "") if on_timeout is not None else ""
+        timeout_step_name = self.step_name(on_timeout) if on_timeout is not None else ""
         return self._next(
             DirectiveKind.wait,
             Wait(
@@ -53,6 +57,15 @@ class DrcFactory:
                 timeout_step_name=timeout_step_name,
             ),
         )
+
+    def step_name(self, step_fn: StepHandler) -> str:
+        """Resolve a handler function to a registered workflow step name."""
+        step_name = getattr(step_fn, "__grctl_step_name__", getattr(step_fn, "__name__", None))
+        if not step_name:
+            raise ValueError("Step function must have a __name__ attribute.")
+        if step_name not in self._step_infos:
+            raise ValueError(f"Step handler '{step_name}' is not registered in the workflow")
+        return step_name
 
     def complete(self, result: Any = None) -> Directive:
         """Mark the workflow run complete with its result."""

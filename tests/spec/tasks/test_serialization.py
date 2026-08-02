@@ -61,7 +61,7 @@ def _struct_output_replay_worker(wf_type: str, pause_event=None) -> None:
         async def build_payload() -> StructPayload:
             return StructPayload(name="replayed", count=7, tags=["a", "b"])
 
-        @wf.start()
+        @wf.step(start=True)
         async def start(ctx: Context) -> Directive:
             return ctx.next.step(work_step)
 
@@ -99,7 +99,7 @@ async def test_task_accepts_primitive_inputs(worker, grctl_client: Client, paylo
         assert type(value) is type(payload)
         return value
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: Any) -> Directive:
         result = await inspect_payload(value)
         return ctx.next.complete(result)
@@ -132,7 +132,7 @@ async def test_task_accepts_dict_and_list_inputs(worker, grctl_client: Client, p
         assert type(value) is type(payload)
         return value
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: Any) -> Directive:
         result = await inspect_payload(value)
         return ctx.next.complete(result)
@@ -165,7 +165,7 @@ async def test_task_accepts_pydantic_input(worker, grctl_client: Client) -> None
         assert isinstance(value, PydanticPayload)
         return value
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: dict[str, Any]) -> Directive:
         result = await inspect_payload(PydanticPayload.model_validate(value))
         return ctx.next.complete(result)
@@ -198,7 +198,7 @@ async def test_task_accepts_msgspec_struct_input(worker, grctl_client: Client) -
         assert isinstance(value, StructPayload)
         return value
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context, value: dict[str, Any]) -> Directive:
         result = await inspect_payload(StructPayload(**value))
         return ctx.next.complete(result)
@@ -238,7 +238,7 @@ async def test_task_returns_primitive_output(worker, grctl_client: Client, paylo
     async def build_payload() -> Any:
         return payload
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert result == payload
@@ -271,7 +271,7 @@ async def test_task_returns_dict_and_list_output(worker, grctl_client: Client, p
     async def build_payload() -> Any:
         return payload
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert result == payload
@@ -298,7 +298,7 @@ async def test_task_returns_pydantic_output(worker, grctl_client: Client) -> Non
     async def build_payload() -> PydanticPayload:
         return PydanticPayload.model_validate(payload)
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert isinstance(result, PydanticPayload)
@@ -324,7 +324,7 @@ async def test_task_returns_msgspec_struct_output(worker, grctl_client: Client) 
     async def build_payload() -> StructPayload:
         return StructPayload(**payload)  # ty:ignore[invalid-argument-type]
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert isinstance(result, StructPayload)
@@ -349,7 +349,7 @@ async def test_task_returns_none_output(worker, grctl_client: Client) -> None:
     async def build_payload() -> None:
         return None
 
-    @wf.start()
+    @wf.step(start=True)
     async def start(ctx: Context) -> Directive:
         result = await build_payload()
         assert result is None

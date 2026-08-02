@@ -10,15 +10,18 @@ tests only need to assert what's specific to the operation under test.
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
-from grctl.exec.context import Context
+from grctl.exec.context import Context, Store
+from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal
+from grctl.exec.kv_manager import Caster, KVManager
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
 from grctl.nats.codec import MsgspecCodec
+from grctl.workflow.workflow import StepInfo
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
 DEFAULT_WORKER_ID = "worker-1"
@@ -80,6 +83,11 @@ class FakeHistoryListenerFactory:
         return FakeHistoryListener()
 
 
+class FakeKVApi:
+    async def load(self, key: str, ty: type | None = None) -> Any:
+        return None
+
+
 def make_context(  # noqa: PLR0913
     step_history: list[HistoryEvent] | None = None,
     *,
@@ -91,6 +99,8 @@ def make_context(  # noqa: PLR0913
     parent_run: RunInfo | None = None,
     childs: ChildTracker | None = None,
     codec: Codec | None = None,
+    step_infos: dict[str, StepInfo] | None = None,
+    store: Store | None = None,
 ) -> Context:
     """Build a Context wired to fakes, over a fresh journal seeded with `step_history`.
 
@@ -98,22 +108,32 @@ def make_context(  # noqa: PLR0913
     keeps its journal private, so the appender you hand in is the only handle onto that.
     """
     journal = Journal(step_history=step_history or [], appender=appender if appender is not None else FakeAppender())
+    directive = Directive(
+        id="directive-1",
+        timestamp=run_info.created_at,
+        kind=DirectiveKind.step,
+        run_info=run_info,
+        msg=Step(step_name="current_step"),
+    )
+    drc_factory = DrcFactory(
+        run_info,
+        worker_id,
+        directive,
+        step_infos if step_infos is not None else {"current_step": StepInfo(timeout_ms=0)},
+    )
+    context_codec = codec if codec is not None else MsgspecCodec()
+    kvman = store if store is not None else KVManager(FakeKVApi(), cast("Caster", context_codec))
     return Context(
         journal,
         run_info,
         worker_id,
-        Directive(
-            id="directive-1",
-            timestamp=run_info.created_at,
-            kind=DirectiveKind.step,
-            run_info=run_info,
-            msg=Step(step_name="current_step"),
-        ),
+        drc_factory,
+        kvman,
         workflow_api=workflow_api if workflow_api is not None else FakeWorkflowAPI(),
         listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
         logger=logging.getLogger("tests.exec"),
         childs=childs if childs is not None else ChildTracker(),
-        codec=codec if codec is not None else MsgspecCodec(),
+        codec=context_codec,
         parent_run=parent_run,
     )
 
