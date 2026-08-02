@@ -4,7 +4,13 @@ from typing import Any, Protocol, TypeVar, overload
 T = TypeVar("T")
 
 
-class Loader(Protocol):
+class KVApi(Protocol):
+    """Read-through access to durable workflow KV state.
+
+    Read-only by design: KV writes flow through the server as step directives,
+    so the SDK side only ever loads.
+    """
+
     async def load(self, key: str, ty: type[T] | None = None) -> T | Any: ...
 
 
@@ -33,13 +39,13 @@ class StoreKeyNotFoundError(KeyError):
 class KVManager:
     def __init__(
         self,
-        loader: Loader,
+        kv_api: KVApi,
         caster: Caster,
     ) -> None:
         self.data: dict[str, Any] = {}
         self.deleted: set[str] = set()
         self.pending = PendingKVUpdates()
-        self.loader = loader
+        self.kv_api = kv_api
         self.caster = caster
 
     @overload
@@ -54,9 +60,9 @@ class KVManager:
 
         if key not in self.data:
             if ty is None:
-                val = await self.loader.load(key)
+                val = await self.kv_api.load(key)
             else:
-                val = await self.loader.load(key, ty)
+                val = await self.kv_api.load(key, ty)
 
             if val is None:
                 raise StoreKeyNotFoundError(key)
@@ -92,7 +98,6 @@ class KVManager:
             return None
         return dict(self.pending.sets)
 
-    # TODO: We should use this when we update the server to process both sets and deletes
     def get_pending_updates_with_deletes(self) -> PendingKVUpdates | None:
         if self.pending.is_empty():
             return None

@@ -34,6 +34,7 @@ class WorkerRegistration(Struct, omit_defaults=True):
     wf_types: list[str]
     registered_at: datetime | None = None
 
+
 @dataclass
 class WorkerInfo:
     id: str

@@ -18,9 +18,8 @@ from nats.jetstream import new as new_jetstream
 from grctl.models import Directive, DirectiveKind, RunInfo, Start, directive_encoder
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
-from grctl.nats.wf_subscriber import Subscriber
+from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
 from grctl.settings import get_settings
-from grctl.worker.run_manager import RunManager
 
 
 def _load_manifest() -> NatsManifest:
@@ -66,7 +65,7 @@ async def test_ack_prevents_redelivery() -> None:
 
     delivery_count = 0
     first_delivery = asyncio.Event()
-    run_manager = AsyncMock(spec=RunManager)
+    run_manager = AsyncMock(spec=DirectiveHandler)
 
     async def on_directive(d: Directive) -> asyncio.Task:
         nonlocal delivery_count
@@ -80,7 +79,7 @@ async def test_ack_prevents_redelivery() -> None:
         js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
-        run_manager=cast("RunManager", run_manager),
+        directive_handler=cast("DirectiveHandler", run_manager),
         logger=logging.getLogger(__name__),
     )
     await subscriber.start()
@@ -110,7 +109,7 @@ async def test_nak_causes_redelivery() -> None:
 
     delivery_count = 0
     second_delivery = asyncio.Event()
-    run_manager = AsyncMock(spec=RunManager)
+    run_manager = AsyncMock(spec=DirectiveHandler)
 
     async def on_directive_fail(d: Directive) -> asyncio.Task:
         nonlocal delivery_count
@@ -125,7 +124,7 @@ async def test_nak_causes_redelivery() -> None:
         js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
-        run_manager=cast("RunManager", run_manager),
+        directive_handler=cast("DirectiveHandler", run_manager),
         logger=logging.getLogger(__name__),
     )
     await subscriber.start()
@@ -154,7 +153,7 @@ async def test_runner_exception_acks_no_redelivery() -> None:
 
     delivery_count = 0
     first_delivery = asyncio.Event()
-    run_manager = AsyncMock(spec=RunManager)
+    run_manager = AsyncMock(spec=DirectiveHandler)
 
     async def on_directive_with_failing_task(d: Directive) -> asyncio.Task:
         nonlocal delivery_count
@@ -168,7 +167,7 @@ async def test_runner_exception_acks_no_redelivery() -> None:
         js=jetstream,
         manifest=manifest,
         wf_types=[wf_type],
-        run_manager=cast("RunManager", run_manager),
+        directive_handler=cast("DirectiveHandler", run_manager),
         logger=logging.getLogger(__name__),
     )
     await subscriber.start()
@@ -206,8 +205,8 @@ async def test_queue_group_distributes_messages_across_workers() -> None:
     worker2_ids: list[str] = []
     both_done = asyncio.Event()
 
-    run_manager1 = AsyncMock(spec=RunManager)
-    run_manager2 = AsyncMock(spec=RunManager)
+    run_manager1 = AsyncMock(spec=DirectiveHandler)
+    run_manager2 = AsyncMock(spec=DirectiveHandler)
 
     async def on_worker1(d: Directive) -> asyncio.Task:
         worker1_ids.append(d.id)
@@ -228,14 +227,14 @@ async def test_queue_group_distributes_messages_across_workers() -> None:
         js=jetstream1,
         manifest=manifest,
         wf_types=[wf_type],
-        run_manager=cast("RunManager", run_manager1),
+        directive_handler=cast("DirectiveHandler", run_manager1),
         logger=logging.getLogger(__name__),
     )
     subscriber2 = Subscriber(
         js=jetstream2,
         manifest=manifest,
         wf_types=[wf_type],
-        run_manager=cast("RunManager", run_manager2),
+        directive_handler=cast("DirectiveHandler", run_manager2),
         logger=logging.getLogger(__name__),
     )
     await subscriber1.start()

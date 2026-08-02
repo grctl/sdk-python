@@ -6,7 +6,7 @@ from nats.aio.msg import Msg
 from nats.js.api import DeliverPolicy
 
 from grctl.logging_config import get_logger
-from grctl.models import HistoryEvent, history_decoder
+from grctl.models import HistoryEvent, RunInfo, history_decoder
 from grctl.nats.manifest import NatsManifest
 
 if TYPE_CHECKING:
@@ -21,13 +21,14 @@ class HistorySubscriber:
     def __init__(
         self,
         nc: NATSClient,
+        manifest: NatsManifest,
         wf_id: str,
         run_id: str,
         handler: Callable[[HistoryEvent], None],
     ) -> None:
         self._nc = nc
         self._js = nc.jetstream()
-        self._manifest = NatsManifest.load()
+        self._manifest = manifest
         self._history_subject = self._manifest.history_subject(wf_id=wf_id, run_id=run_id)
         self._history_stream = self._manifest.history_stream_name()
         self._handler = handler
@@ -64,3 +65,20 @@ class HistorySubscriber:
                 await msg.ack()
             except Exception:
                 logger.exception("Error acking history event")
+
+
+class NatsHistoryListenerFactory:
+    """Builds a HistorySubscriber for a run, satisfying HistoryListenerFactory."""
+
+    def __init__(self, nc: NATSClient, manifest: NatsManifest) -> None:
+        self.nc = nc
+        self.manifest = manifest
+
+    def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> HistorySubscriber:
+        return HistorySubscriber(
+            nc=self.nc,
+            manifest=self.manifest,
+            wf_id=run_info.wf_id,
+            run_id=run_info.id,
+            handler=handler,
+        )

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from grctl.models.command import EventDef
+from grctl.models.command import EventDef, WorkflowTypeDef
 from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec
 
 
@@ -110,6 +110,26 @@ class Workflow:
     def query_names(self) -> list[str]:
         """Names of all registered query handlers."""
         return list(self._query_handlers.keys())
+
+    def step_handler(self, name: str) -> HandlerConfig:
+        """Look up a registered step handler by name."""
+        config = self._step_handlers.get(name)
+        if config is None:
+            raise ValueError(f"Step handler '{name}' not registered in workflow '{self.workflow_type}'")
+        return config
+
+    def type_def(self) -> WorkflowTypeDef:
+        """Build the structural definition of this workflow, as reported to the server."""
+        start_timeout = self.start_handler.timeout if self.start_handler else None
+        start_step_timeout_ms = int(start_timeout.total_seconds() * 1000) if start_timeout is not None else 0
+        return WorkflowTypeDef(
+            type=self.workflow_type,
+            start_step=self.start_step_name or "",
+            steps=self.step_names,
+            events=self.event_defs,
+            queries=self.query_names,
+            start_step_timeout_ms=start_step_timeout_ms,
+        )
 
     def start(self, timeout: timedelta | None = None) -> Callable[[HandlerF], HandlerF]:
         """Decorate the workflow start handler.

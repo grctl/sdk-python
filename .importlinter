@@ -1,0 +1,72 @@
+[importlinter]
+root_package = grctl
+include_external_packages = True
+
+[importlinter:contract:layered-architecture]
+name = layered-architecture
+type = layers
+layers =
+    grctl.worker | grctl.client
+    grctl.exec
+    grctl.workflow
+    grctl.models
+
+[importlinter:contract:nats-imports-no-grctl-modules]
+name = nats-imports-no-grctl-modules
+type = forbidden
+source_modules =
+    grctl.nats
+forbidden_modules =
+    grctl.client
+    grctl.exec
+    grctl.worker
+    grctl.workflow
+
+[importlinter:contract:grctl-modules-do-not-import-nats]
+name = grctl-modules-do-not-import-nats
+type = forbidden
+source_modules =
+    grctl.client
+    grctl.exec
+    grctl.models
+    grctl.worker
+    grctl.workflow
+forbidden_modules =
+    grctl.nats
+
+[importlinter:contract:only-nats-layer-imports-nats-lib]
+name = only-nats-layer-imports-nats-lib
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    grctl.client
+    grctl.exec
+    grctl.models
+    grctl.worker
+    grctl.workflow
+forbidden_modules =
+    nats
+
+[importlinter:contract:only-nats-layer-imports-msgspec]
+name = only-nats-layer-imports-msgspec
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    grctl.client
+    grctl.exec
+    grctl.worker
+    grctl.workflow
+forbidden_modules =
+    msgspec
+
+[importlinter:contract:models-is-leaf]
+name = models-is-leaf
+type = forbidden
+source_modules =
+    grctl.models
+forbidden_modules =
+    grctl.workflow
+    grctl.nats
+    grctl.exec
+    grctl.worker
+    grctl.client

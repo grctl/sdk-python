@@ -34,10 +34,10 @@ async def test_history_subscriber_receives_event() -> None:
     events: list[HistoryEvent] = []
     handler = HistoryEventHandler(ready, events)
 
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=handler)
+    manifest = NatsManifest.load()
+    subscriber = HistorySubscriber(nc=nc, manifest=manifest, wf_id=wf_id, run_id=run_id, handler=handler)
     await subscriber.start()
 
-    manifest = NatsManifest.load()
     subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
     event = HistoryEvent(
         wf_id=wf_id,

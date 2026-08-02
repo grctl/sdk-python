@@ -48,6 +48,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.13",
     "pyright>=1.1.407",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.2.0",

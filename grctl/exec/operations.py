@@ -11,9 +11,6 @@ from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.journal import Outcome
 from grctl.models import (
     ChildWorkflowStarted,
-    CmdKind,
-    Command,
-    EventCmd,
     HistoryKind,
     ParentEventSent,
     RandomRecorded,
@@ -25,7 +22,7 @@ from grctl.models import (
 from grctl.models.history import HistoryEvents
 from grctl.workflow import WorkflowHandle
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import CommandSender
+from grctl.workflow.handle import WorkflowAPI
 
 
 class Now:
@@ -139,7 +136,7 @@ class StartChild:
         self,
         run_info: RunInfo,
         worker_id: str,
-        command_sender: CommandSender,
+        workflow_api: WorkflowAPI,
         listener_factory: HistoryListenerFactory,
         logger: Logger,
         childs: ChildTracker,
@@ -151,7 +148,7 @@ class StartChild:
     ) -> None:
         self._run_info = run_info
         self._worker_id = worker_id
-        self._command_sender = command_sender
+        self._workflow_api = workflow_api
         self._listener_factory = listener_factory
         self._logger = logger
         self._childs = childs
@@ -210,7 +207,7 @@ class StartChild:
         return WorkflowHandle(
             run_info=child_run_info,
             payload=workflow_input,
-            command_sender=self._command_sender,
+            workflow_api=self._workflow_api,
             listener_factory=self._listener_factory,
             sender_id=self._worker_id,
             logger=self._logger,
@@ -224,7 +221,7 @@ class SendToParent:
         self,
         parent_run: RunInfo | None,
         worker_id: str,
-        command_sender: CommandSender,
+        workflow_api: WorkflowAPI,
         event_name: str,
         payload: Any | None = None,
     ) -> None:
@@ -232,7 +229,7 @@ class SendToParent:
             raise RuntimeError("No parent workflow to send event to.")
         self._parent_run = parent_run
         self._worker_id = worker_id
-        self._command_sender = command_sender
+        self._workflow_api = workflow_api
         self._event_name = event_name
         self._payload = payload
 
@@ -249,19 +246,8 @@ class SendToParent:
         return frozenset({HistoryKind.parent_event_sent})
 
     async def perform(self) -> Outcome:
-        await self._command_sender.send(
-            self._parent_run,
-            Command(
-                id=str(ULID()),
-                kind=CmdKind.run_event,
-                timestamp=datetime.now(UTC),
-                sender_id=self._worker_id,
-                msg=EventCmd(
-                    wf_id=self._parent_run.wf_id,
-                    event_name=self._event_name,
-                    payload=self._payload,
-                ),
-            ),
+        await self._workflow_api.send_event(
+            self._parent_run, self._event_name, self._payload, self._worker_id
         )
         return HistoryKind.parent_event_sent, ParentEventSent(
             event_name=self._event_name,

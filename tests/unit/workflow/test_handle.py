@@ -2,83 +2,78 @@ import asyncio
 
 import pytest
 
-from grctl.models import CancelCmd, CmdKind, EventCmd, StartCmd, TerminateCmd
 from grctl.workflow.handle import WorkflowHandle
-from tests.unit.workflow.fakes import DEFAULT_RUN_INFO, LOGGER, CapturingListenerFactory, FakeCommandSender
+from tests.unit.workflow.fakes import DEFAULT_RUN_INFO, LOGGER, CapturingListenerFactory, FakeWorkflowAPI
 
 
-def make_handle(payload: object | None = None) -> tuple[WorkflowHandle, FakeCommandSender, CapturingListenerFactory]:
-    command_sender = FakeCommandSender()
+def make_handle(payload: object | None = None) -> tuple[WorkflowHandle, FakeWorkflowAPI, CapturingListenerFactory]:
+    workflow_api = FakeWorkflowAPI()
     listener_factory = CapturingListenerFactory()
     handle = WorkflowHandle(
         DEFAULT_RUN_INFO,
         payload,
-        command_sender,
+        workflow_api,
         listener_factory,
         sender_id="worker-1",
         logger=LOGGER,
     )
-    return handle, command_sender, listener_factory
+    return handle, workflow_api, listener_factory
 
 
 async def test_start_starts_the_future_and_sends_a_start_command() -> None:
-    handle, command_sender, listener_factory = make_handle(payload={"x": 1})
+    handle, workflow_api, listener_factory = make_handle(payload={"x": 1})
 
     await handle.start()
 
     assert listener_factory.listener.start_calls == 1
-    assert len(command_sender.sent) == 1
-    cmd = command_sender.sent[0]
-    assert cmd.kind == CmdKind.run_start
-    assert isinstance(cmd.msg, StartCmd)
-    assert cmd.msg.run_info == DEFAULT_RUN_INFO
-    assert cmd.msg.input == {"x": 1}
-    assert cmd.sender_id == "worker-1"
+    assert len(workflow_api.calls) == 1
+    call = workflow_api.calls[0]
+    assert call.op == "start_run"
+    assert call.run_info == DEFAULT_RUN_INFO
+    assert call.kwargs["input"] == {"x": 1}
+    assert call.sender_id == "worker-1"
 
 
 async def test_attach_starts_the_future_without_sending_a_command() -> None:
-    handle, command_sender, listener_factory = make_handle()
+    handle, workflow_api, listener_factory = make_handle()
 
     await handle.attach()
 
     assert listener_factory.listener.start_calls == 1
-    assert command_sender.sent == []
+    assert workflow_api.calls == []
 
 
 async def test_send_publishes_an_event_command() -> None:
-    handle, command_sender, _ = make_handle()
+    handle, workflow_api, _ = make_handle()
 
     await handle.send("approved", {"amount": 5})
 
-    assert len(command_sender.sent) == 1
-    cmd = command_sender.sent[0]
-    assert cmd.kind == CmdKind.run_event
-    assert isinstance(cmd.msg, EventCmd)
-    assert cmd.msg.wf_id == DEFAULT_RUN_INFO.wf_id
-    assert cmd.msg.event_name == "approved"
-    assert cmd.msg.payload == {"amount": 5}
+    assert len(workflow_api.calls) == 1
+    call = workflow_api.calls[0]
+    assert call.op == "send_event"
+    assert call.run_info == DEFAULT_RUN_INFO
+    assert call.kwargs["event_name"] == "approved"
+    assert call.kwargs["payload"] == {"amount": 5}
 
 
 async def test_cancel_publishes_a_cancel_command_with_reason() -> None:
-    handle, command_sender, _ = make_handle()
+    handle, workflow_api, _ = make_handle()
 
     await handle.cancel("no longer needed")
 
-    cmd = command_sender.sent[0]
-    assert cmd.kind == CmdKind.run_cancel
-    assert isinstance(cmd.msg, CancelCmd)
-    assert cmd.msg.reason == "no longer needed"
+    call = workflow_api.calls[0]
+    assert call.op == "cancel_run"
+    assert call.kwargs["reason"] == "no longer needed"
 
 
 async def test_terminate_publishes_a_terminate_command_with_reason() -> None:
-    handle, command_sender, _ = make_handle()
+    handle, workflow_api, _ = make_handle()
 
     await handle.terminate("force stop")
 
-    cmd = command_sender.sent[0]
-    assert cmd.kind == CmdKind.run_terminate
-    assert isinstance(cmd.msg, TerminateCmd)
-    assert cmd.msg.reason == "force stop"
+    call = workflow_api.calls[0]
+    assert call.op == "terminate_run"
+    assert call.kwargs["reason"] == "force stop"
 
 
 async def test_result_returns_the_future_value_and_stops_the_listener() -> None:

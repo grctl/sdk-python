@@ -5,6 +5,10 @@ uv = "latest"
 description = "Run ruff check"
 run = "uv run ruff check --fix"
 
+[tasks.imports]
+description = "Check import dependencies"
+run = "uv run lint-imports"
+
 [tasks.format]
 description = "Run ruff format"
 run = "uv run ruff format"
@@ -15,7 +19,7 @@ run = "uvx ty check"
 
 [tasks.check]
 description = "Run all checks"
-depends = ["lint", "format", "typecheck"]
+depends = ["lint", "format", "typecheck", "imports"]
 
 [tasks."test:unit"]
 description = "Run unit tests"

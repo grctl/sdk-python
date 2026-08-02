@@ -105,9 +105,7 @@ class Journal:
 
         return operation.materialize(kind, payload)
 
-    async def next(
-        self, acceptable_kinds: frozenset[HistoryKind], operation_id: str
-    ) -> asyncio.Future[Outcome] | None:
+    async def next(self, acceptable_kinds: frozenset[HistoryKind], operation_id: str) -> asyncio.Future[Outcome] | None:
 
         # If the cursor is past the end of history, we are not replaying — return None.
         if self._cursor >= len(self.step_history):

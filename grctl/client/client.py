@@ -21,7 +21,6 @@ from grctl.models.errors import (
     WorkflowTypeNotRegisteredError,
 )
 from grctl.nats.connection import Connection
-from grctl.nats.history_fetch import fetch_run_history
 from grctl.workflow.handle import WorkflowHandle
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,6 @@ class Client:
 
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
-        self._codec = connection.codec
         self.id = f"c_{secrets.token_hex(4)}@{socket.gethostname()}"
 
     async def describe(self, wf_id: str) -> RunInfo:
@@ -110,9 +108,10 @@ class Client:
         handle = WorkflowHandle(
             run_info=run_info,
             payload=None,
-            connection=self._connection,
-            codec=self._codec,
+            workflow_api=self._connection.workflow_api,
+            listener_factory=self._connection.listener_factory,
             sender_id=self.id,
+            logger=logger,
         )
         await handle.attach()
         return handle
@@ -123,12 +122,7 @@ class Client:
         if resolved_run_id is None:
             resolved_run_id = (await self.describe(wf_id)).id
 
-        return await fetch_run_history(
-            js=self._connection.js,
-            manifest=self._connection.manifest,
-            wf_id=wf_id,
-            run_id=resolved_run_id,
-        )
+        return await self._connection.history_reader.get_run_history(wf_id=wf_id, run_id=resolved_run_id)
 
     async def start_workflow(
         self,
@@ -152,15 +146,15 @@ class Client:
         handle = WorkflowHandle(
             run_info=run_info,
             payload=input,
-            connection=self._connection,
-            codec=self._codec,
-            return_type=return_type,
+            workflow_api=self._connection.workflow_api,
+            listener_factory=self._connection.listener_factory,
             sender_id=self.id,
+            logger=logger,
+            return_type=return_type,
         )
 
         # Start the workflow future (subscribe to events and publish run command)
-        response_bytes = await handle.start()
-        response = msgspec.msgpack.decode(response_bytes, type=GrctlAPIResponse)
+        response = await handle.start()
         if not response.success:
             await handle.future.stop()
             error_msg = response.error.message if response.error else "unknown error"

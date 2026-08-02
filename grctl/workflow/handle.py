@@ -1,18 +1,24 @@
 import asyncio
-from datetime import UTC, datetime
 from logging import Logger
 from typing import Any, Protocol
 
-from ulid import ULID
-
-from grctl.models import CancelCmd, CmdKind, Command, EventCmd, RunInfo, StartCmd, TerminateCmd
+from grctl.models import GrctlAPIResponse, RunInfo
 from grctl.workflow.future import HistoryListenerFactory, ResultDecoder, WorkflowFuture
 
 
-class CommandSender(Protocol):
-    """Delivers a Command to a run and returns the raw response."""
+class WorkflowAPI(Protocol):
+    """Run-scoped calls to the server that a WorkflowHandle makes.
 
-    async def send(self, run: RunInfo, cmd: Command) -> bytes: ...
+    The handle passes its intent; building/routing the underlying command is the
+    implementation's concern.
+    """
+
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse: ...  # noqa: A002
+    async def send_event(
+        self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str
+    ) -> GrctlAPIResponse: ...
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse: ...
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse: ...
 
 
 class WorkflowHandle:
@@ -20,7 +26,7 @@ class WorkflowHandle:
         self,
         run_info: RunInfo,
         payload: Any | None,
-        command_sender: CommandSender,
+        workflow_api: WorkflowAPI,
         listener_factory: HistoryListenerFactory,
         sender_id: str,
         logger: Logger,
@@ -29,7 +35,7 @@ class WorkflowHandle:
     ) -> None:
         self.run_info = run_info
         self._payload = payload
-        self._command_sender = command_sender
+        self._workflow_api = workflow_api
         self._sender_id = sender_id
         self._logger = logger
         self.future = WorkflowFuture(
@@ -41,39 +47,18 @@ class WorkflowHandle:
         self._logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
         await self.future.start()
 
-    async def start(self) -> bytes:
+    async def start(self) -> GrctlAPIResponse:
         """Start the workflow future (subscribe to events and publish run command)."""
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_start,
-            timestamp=datetime.now(UTC),
-            msg=StartCmd(
-                run_info=self.run_info,
-                input=self._payload,
-            ),
-            sender_id=self._sender_id,
-        )
         self._logger.debug("Starting workflow history listener")
         await self.future.start()
         self._logger.debug(
             "Publishing start command for wf_type=%s wf_id=%s", self.run_info.wf_type, self.run_info.wf_id
         )
-        return await self._command_sender.send(self.run_info, cmd)
+        return await self._workflow_api.start_run(self.run_info, self._payload, self._sender_id)
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_event,
-            timestamp=datetime.now(UTC),
-            msg=EventCmd(
-                wf_id=self.run_info.wf_id,
-                event_name=event_name,
-                payload=payload,
-            ),
-            sender_id=self._sender_id,
-        )
-        self._logger.debug("Publishing event command for workflow %s", cmd)
-        await self._command_sender.send(self.run_info, cmd)
+        self._logger.debug("Sending event '%s' to workflow %s", event_name, self.run_info.wf_id)
+        await self._workflow_api.send_event(self.run_info, event_name, payload, self._sender_id)
 
     async def result(self, timeout: float | None = None) -> Any:  # noqa: ASYNC109
         """Wait for workflow completion and return its result.
@@ -87,30 +72,10 @@ class WorkflowHandle:
             await self.future.stop()
 
     async def cancel(self, reason: str | None = None) -> None:
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_cancel,
-            timestamp=datetime.now(UTC),
-            msg=CancelCmd(
-                wf_id=self.run_info.wf_id,
-                reason=reason,
-            ),
-            sender_id=self._sender_id,
-        )
-        await self._command_sender.send(self.run_info, cmd)
+        await self._workflow_api.cancel_run(self.run_info, reason, self._sender_id)
 
     async def terminate(self, reason: str | None = None) -> None:
-        cmd = Command(
-            id=str(ULID()),
-            kind=CmdKind.run_terminate,
-            timestamp=datetime.now(UTC),
-            msg=TerminateCmd(
-                wf_id=self.run_info.wf_id,
-                reason=reason,
-            ),
-            sender_id=self._sender_id,
-        )
-        await self._command_sender.send(self.run_info, cmd)
+        await self._workflow_api.terminate_run(self.run_info, reason, self._sender_id)
 
     async def query(self, query_name: str) -> Any:
         raise NotImplementedError("query() not yet implemented")

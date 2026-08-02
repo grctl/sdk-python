@@ -1,3 +1,6 @@
+from typing import Any
+
+import msgspec
 from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
@@ -7,11 +10,11 @@ from grctl.nats.manifest import NatsManifest
 logger = get_logger(__name__)
 
 
-class KVStore:
-    """NATS KV store for workflow state.
+class NatsKVApi:
+    """NATS impl of the KVApi read port for one run's workflow state.
 
-    Provides low-level operations for loading and storing workflow data
-    in NATS JetStream
+    Loads durable values from the state stream in JetStream. Writes are not
+    exposed here — they flow through the server as step directives.
     """
 
     def __init__(self, js: JetStreamContext, manifest: NatsManifest, run: RunInfo) -> None:
@@ -27,9 +30,13 @@ class KVStore:
             key_name,
         )
 
-    async def load(self, key_name: str) -> bytes | None:
-        """Load a single key from the store."""
-        full_key = self._make_key(key_name)
+    async def load(self, key: str, ty: type | None = None) -> Any:  # noqa: ARG002
+        """Load and decode a single key from the store.
+
+        `ty` is accepted to satisfy the KVApi protocol but unused — KVManager
+        falls back to its Caster when the decoded value isn't already of type `ty`.
+        """
+        full_key = self._make_key(key)
         stream_name = self._manifest.state_stream_name()
         try:
             entry = await self._js.get_last_msg(stream_name=stream_name, subject=full_key)
@@ -42,4 +49,4 @@ class KVStore:
                 return None
             raise
         else:
-            return entry.data
+            return msgspec.msgpack.decode(entry.data)

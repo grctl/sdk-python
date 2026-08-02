@@ -60,6 +60,10 @@ class MsgspecCodec:
     def from_primitive(self, raw: Any, tp: type) -> Any:
         return msgspec.convert(raw, tp, dec_hook=self.dec_hook)
 
+    def cast(self, value: Any, ty: type) -> Any:
+        """Alias for from_primitive — satisfies KVManager's Caster protocol."""
+        return self.from_primitive(value, ty)
+
     def encode(self, value: Any) -> bytes:
         return msgspec.msgpack.encode(value, enc_hook=self.enc_hook)
 

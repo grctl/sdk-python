@@ -2,8 +2,9 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from nats.jetstream import JetStream
 from nats.jetstream.consumer import ConsumerConfig
@@ -11,16 +12,16 @@ from nats.jetstream.consumer.pull import PullConsumer
 from nats.jetstream.message import Message
 
 from grctl.models import Directive, directive_decoder
+from grctl.models.errors import WorkflowStepAlreadyExecutedError
 from grctl.nats.manifest import NatsManifest
 from grctl.settings import get_settings
 
-if TYPE_CHECKING:
-    from grctl.worker.run_manager import RunManager
+DirectiveHandler = Callable[[Directive], Awaitable[asyncio.Task]]
+"""Dispatches one directive and returns the task running it.
 
-
-class WorkflowStepAlreadyExecutedError(Exception):
-    def __init__(self, msg: str) -> None:
-        super().__init__(msg)
+A callable rather than an import from exec/ so nats/ stays decoupled;
+ExecutionManager.handle_next_directive satisfies it.
+"""
 
 
 class Subscriber:
@@ -29,13 +30,13 @@ class Subscriber:
         js: JetStream,
         manifest: NatsManifest,
         wf_types: list[str],
-        run_manager: "RunManager",
+        directive_handler: DirectiveHandler,
         logger: logging.Logger,
     ) -> None:
         self._jetstream = js
         self._manifest = manifest
         self._wf_types = wf_types
-        self._run_manager = run_manager
+        self._directive_handler = directive_handler
         self._consume_tasks: list[asyncio.Task] = []
         self.tasks_in_progress: set[asyncio.Task] = set()
         self.logger = logger
@@ -153,7 +154,7 @@ class Subscriber:
             directive.attempt,
         )
         try:
-            task = await self._run_manager.handle_next_directive(directive)
+            task = await self._directive_handler(directive)
         except WorkflowStepAlreadyExecutedError:
             # run_id already executing — ACK to prevent redelivery of a duplicate
             self.logger.warning(

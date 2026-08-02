@@ -2,24 +2,50 @@
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
-from grctl.models import Command, HistoryEvent, HistoryKind, RunInfo
+from grctl.models import GrctlAPIResponse, HistoryEvent, HistoryKind, RunInfo
 from grctl.models.history import HistoryEvents
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
 LOGGER = logging.getLogger("tests.workflow")
 
 
-class FakeCommandSender:
-    """Records every command handed to it instead of putting it on the wire."""
+@dataclass
+class WorkflowAPICall:
+    """One recorded run-scoped call, for asserting on intent."""
+
+    op: str
+    run_info: RunInfo
+    sender_id: str
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+class FakeWorkflowAPI:
+    """Records each run-scoped call as intent instead of putting a command on the wire."""
 
     def __init__(self) -> None:
-        self.sent: list[Command] = []
+        self.calls: list[WorkflowAPICall] = []
 
-    async def send(self, run: RunInfo, cmd: Command) -> bytes:
-        self.sent.append(cmd)
-        return b""
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse:  # noqa: A002
+        self.calls.append(WorkflowAPICall("start_run", run_info, sender_id, {"input": input}))
+        return GrctlAPIResponse(success=True)
+
+    async def send_event(self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str) -> GrctlAPIResponse:
+        self.calls.append(
+            WorkflowAPICall("send_event", run_info, sender_id, {"event_name": event_name, "payload": payload})
+        )
+        return GrctlAPIResponse(success=True)
+
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+        self.calls.append(WorkflowAPICall("cancel_run", run_info, sender_id, {"reason": reason}))
+        return GrctlAPIResponse(success=True)
+
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+        self.calls.append(WorkflowAPICall("terminate_run", run_info, sender_id, {"reason": reason}))
+        return GrctlAPIResponse(success=True)
 
 
 class FakeHistoryListener:

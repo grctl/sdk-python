@@ -11,7 +11,7 @@ from grctl.exec.task import Task
 from grctl.models import Directive, RunInfo
 from grctl.workflow import WorkflowHandle
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import CommandSender
+from grctl.workflow.handle import WorkflowAPI
 
 StepHandler = Callable[..., Awaitable[Directive]]
 
@@ -24,7 +24,7 @@ class Context:
         journal: Journal,
         run_info: RunInfo,
         worker_id: str,
-        command_sender: CommandSender,
+        workflow_api: WorkflowAPI,
         listener_factory: HistoryListenerFactory,
         logger: Logger,
         childs: ChildTracker,
@@ -33,7 +33,7 @@ class Context:
         self._journal = journal
         self._run_info = run_info
         self._worker_id = worker_id
-        self._command_sender = command_sender
+        self._workflow_api = workflow_api
         self._listener_factory = listener_factory
         self._logger = logger
         self._childs = childs
@@ -57,7 +57,7 @@ class Context:
 
     async def send_to_parent(self, event_name: str, payload: Any | None = None) -> None:
         """Emit an event to the parent workflow, if any."""
-        operation = SendToParent(self._parent_run, self._worker_id, self._command_sender, event_name, payload)
+        operation = SendToParent(self._parent_run, self._worker_id, self._workflow_api, event_name, payload)
         await self._journal.run(operation)
 
     async def start_child(
@@ -78,7 +78,7 @@ class Context:
         operation = StartChild(
             self._run_info,
             self._worker_id,
-            self._command_sender,
+            self._workflow_api,
             self._listener_factory,
             self._logger,
             self._childs,

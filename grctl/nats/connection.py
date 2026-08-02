@@ -1,3 +1,6 @@
+import logging
+from collections.abc import Awaitable, Callable
+
 from nats.aio.client import Client as NATSClient
 from nats.client import connect
 from nats.jetstream import JetStream
@@ -5,20 +8,33 @@ from nats.jetstream import new as new_jetstream
 from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
+from grctl.models import Command, RunInfo
 from grctl.nats.codec import CodecRegistry
+from grctl.nats.directive_api import NatsDirectiveAPI
+from grctl.nats.history import NatsHistory
+from grctl.nats.history_sub import NatsHistoryListenerFactory
+from grctl.nats.kv_api import NatsKVApi
 from grctl.nats.manifest import NatsManifest
 from grctl.nats.nats_client import get_nats_client
 from grctl.nats.publisher import Publisher
+from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
+from grctl.nats.worker_api import NatsWorkerAPI
+from grctl.nats.worker_cmd_subscriber import WorkerCmdSubscriber
+from grctl.nats.workflow_api import NatsWorkflowAPI
 from grctl.settings import get_settings
 
 logger = get_logger(__name__)
 
-# TODO:
-# 1. We need to remove singleton pattern. Users should be able to create multiple connections.
-# 2. We need to abstract the connection so, users don't need import from NATS layer. We should keep the public API simple.
-
 
 class Connection:
+    """Owns the NATS transport and exposes the raw collaborators it satisfies.
+
+    Callers (worker/client) get objects back from Connection rather than
+    importing grctl.nats.* concretes themselves; those objects satisfy the
+    protocols exec/workflow define structurally, without Connection needing
+    to import those protocols.
+    """
+
     _instance: "Connection | None" = None
 
     def __init__(  # noqa: PLR0913
@@ -36,6 +52,11 @@ class Connection:
         self._manifest = manifest
         self._publisher = publisher
         self._codec = codec or CodecRegistry()
+
+        self._history = NatsHistory(self._nc, self._manifest, self._codec)
+        self._listener_factory = NatsHistoryListenerFactory(self._nc, self._manifest)
+        self._workflow_api = NatsWorkflowAPI(self._nc, self._manifest, self._codec)
+        self._worker_api = NatsWorkerAPI(self._nc, self._manifest, self._codec)
 
     @classmethod
     async def connect(cls, servers: list[str] | None = None, codec: CodecRegistry | None = None) -> "Connection":
@@ -100,3 +121,39 @@ class Connection:
     async def close(self) -> None:
         await self._nc.drain()
         logger.debug("Connection closed")
+
+    @property
+    def history_reader(self) -> NatsHistory:
+        return self._history
+
+    @property
+    def history_writer(self) -> NatsHistory:
+        return self._history
+
+    @property
+    def workflow_api(self) -> NatsWorkflowAPI:
+        return self._workflow_api
+
+    @property
+    def listener_factory(self) -> NatsHistoryListenerFactory:
+        return self._listener_factory
+
+    def build_kv_api(self, run_info: RunInfo) -> NatsKVApi:
+        return NatsKVApi(self._js, self._manifest, run_info)
+
+    def build_directive_api(self, run_info: RunInfo) -> NatsDirectiveAPI:
+        return NatsDirectiveAPI(self._js, self._manifest, run_info, enc_hook=self._codec.enc_hook)
+
+    def build_worker_cmd_subscriber(
+        self, worker_id: str, handler: Callable[[Command], Awaitable[bool]]
+    ) -> WorkerCmdSubscriber:
+        return WorkerCmdSubscriber(self._nc, self._manifest, worker_id, handler)
+
+    def build_task_subscriber(
+        self, wf_types: list[str], directive_handler: DirectiveHandler, logger: logging.Logger
+    ) -> Subscriber:
+        return Subscriber(self._jetstream, self._manifest, wf_types, directive_handler, logger)
+
+    @property
+    def worker_api(self) -> NatsWorkerAPI:
+        return self._worker_api

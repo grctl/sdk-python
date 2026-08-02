@@ -16,7 +16,7 @@ from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context
 from grctl.exec.journal import Journal
 from grctl.exec.step_history import HistoryCreateInput
-from grctl.models import Command, HistoryEvent, RunInfo
+from grctl.models import GrctlAPIResponse, HistoryEvent, RunInfo
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
 DEFAULT_WORKER_ID = "worker-1"
@@ -42,15 +42,29 @@ class FakeAppender:
         )
 
 
-class FakeCommandSender:
-    """Records every command handed to it instead of putting it on the wire."""
+class FakeWorkflowAPI:
+    """Records each run-scoped call as intent instead of putting a command on the wire."""
 
     def __init__(self) -> None:
-        self.sent: list[Command] = []
+        self.calls: list[tuple[str, RunInfo]] = []
 
-    async def send(self, run: RunInfo, cmd: Command) -> bytes:
-        self.sent.append(cmd)
-        return b""
+    async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> GrctlAPIResponse:  # noqa: A002
+        self.calls.append(("start_run", run_info))
+        return GrctlAPIResponse(success=True)
+
+    async def send_event(
+        self, run_info: RunInfo, event_name: str, payload: Any, sender_id: str
+    ) -> GrctlAPIResponse:
+        self.calls.append(("send_event", run_info))
+        return GrctlAPIResponse(success=True)
+
+    async def cancel_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+        self.calls.append(("cancel_run", run_info))
+        return GrctlAPIResponse(success=True)
+
+    async def terminate_run(self, run_info: RunInfo, reason: str | None, sender_id: str) -> GrctlAPIResponse:
+        self.calls.append(("terminate_run", run_info))
+        return GrctlAPIResponse(success=True)
 
 
 class FakeHistoryListener:
@@ -74,7 +88,7 @@ def make_context(  # noqa: PLR0913
     step_history: list[HistoryEvent] | None = None,
     *,
     appender: FakeAppender | None = None,
-    command_sender: FakeCommandSender | None = None,
+    workflow_api: FakeWorkflowAPI | None = None,
     listener_factory: FakeHistoryListenerFactory | None = None,
     run_info: RunInfo = DEFAULT_RUN_INFO,
     worker_id: str = DEFAULT_WORKER_ID,
@@ -91,7 +105,7 @@ def make_context(  # noqa: PLR0913
         journal,
         run_info,
         worker_id,
-        command_sender=command_sender if command_sender is not None else FakeCommandSender(),
+        workflow_api=workflow_api if workflow_api is not None else FakeWorkflowAPI(),
         listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
         logger=logging.getLogger("tests.exec"),
         childs=childs if childs is not None else ChildTracker(),

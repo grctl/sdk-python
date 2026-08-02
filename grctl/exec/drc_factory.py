@@ -15,7 +15,7 @@ from grctl.models import (
 from grctl.models.directive import NextMessage
 
 
-class StepDirectiveFactory:
+class DrcFactory:
     def __init__(
         self,
         run_info: RunInfo,

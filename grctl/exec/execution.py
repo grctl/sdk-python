@@ -1,30 +1,46 @@
 import asyncio
 import contextlib
 import traceback
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from logging import Logger
 from typing import Any, Protocol
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context
+from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal, StepHistoryAppender
 from grctl.exec.kv_manager import KVManager
-from grctl.exec.step_directive_factory import StepDirectiveFactory
 from grctl.models import Directive, DirectiveKind, ErrorDetails, Fail, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
 from grctl.models.worker import WorkerInfo
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import CommandSender
+from grctl.workflow.handle import WorkflowAPI
 
 
-class StepDirectiveSender(Protocol):
+class DirectiveAPI(Protocol):
+    """Outbound port an Execution publishes its step directives through."""
+
     async def send(self, directive: Directive) -> None: ...
 
 
 class Codec(Protocol):
-    def from_primitive(self, value: Any, type: Any) -> Any: ...
+    def from_primitive(self, raw: Any, tp: type) -> Any: ...
     def to_primitive(self, value: Any) -> Any: ...
+
+
+@dataclass
+class ExecutionDeps:
+    """Everything an Execution needs from the outside world, for one directive."""
+
+    kvman: KVManager
+    history_appender: StepHistoryAppender
+    directive_api: DirectiveAPI
+    codec: Codec
+    workflow_api: WorkflowAPI
+    listener_factory: HistoryListenerFactory
+    step_history: list[HistoryEvent]
 
 
 class Execution:
@@ -41,40 +57,33 @@ class Execution:
     # The time at which this execution started.
     started_at: datetime
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        run_info: RunInfo,
         worker_info: WorkerInfo,
         directive: Directive,
         handler_config: HandlerConfig,
-        kvman: KVManager,
-        history_appender: StepHistoryAppender,
-        step_directive_sender: StepDirectiveSender,
-        codec: Codec,
+        deps: ExecutionDeps,
         logger: Logger,
-        command_sender: CommandSender,
-        listener_factory: HistoryListenerFactory,
-        step_history: list[HistoryEvent] | None = None,
     ) -> None:
-        self.run_info = run_info
+        self.run_info = directive.run_info
         self.worker_info = worker_info
         self.directive = directive
         self.handler_config = handler_config
         self.childs = ChildTracker()
-        self.kvman = kvman
-        self.step_history = step_history or []
-        self.history_appender = history_appender
-        self.directive_sender = step_directive_sender
-        self.codec = codec
+        self.kvman = deps.kvman
+        self.step_history = deps.step_history or []
+        self.history_appender = deps.history_appender
+        self.directive_api = deps.directive_api
+        self.codec = deps.codec
         self.logger = logger
-        self.step_directive_factory = StepDirectiveFactory(run_info, worker_info.id, directive)
+        self.step_directive_factory = DrcFactory(self.run_info, worker_info.id, directive)
         self.journal = Journal(self.step_history, self.history_appender)
         self.context = Context(
             self.journal,
-            run_info,
+            self.run_info,
             worker_info.id,
-            command_sender,
-            listener_factory,
+            deps.workflow_api,
+            deps.listener_factory,
             logger,
             self.childs,
             self.parent_run,
@@ -149,7 +158,7 @@ class Execution:
         if self.step_history is None or len(self.step_history) == 0:
             self.started_at = datetime.now(UTC)
             drc = self.step_directive_factory.step_picked_up(step_name=self.step_name, timestamp=self.started_at)
-            await self.directive_sender.send(drc)
+            await self.directive_api.send(drc)
 
     async def send_step_result(self, directive: Directive) -> None:
         if not isinstance(directive.msg, NextMessage):
@@ -168,7 +177,7 @@ class Execution:
             timestamp=datetime.now(UTC),
             duration_ms=duration_ms,
         )
-        await self.directive_sender.send(drc)
+        await self.directive_api.send(drc)
 
     def get_serialised_handler_payload(self) -> dict[str, Any] | None:
         spec = self.handler_config.spec

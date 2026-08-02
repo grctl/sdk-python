@@ -1,3 +1,5 @@
+from collections.abc import Awaitable, Callable
+
 import msgspec
 from nats.aio.client import Client as NatsClient
 from nats.aio.msg import Msg
@@ -5,27 +7,31 @@ from nats.aio.msg import Msg
 from grctl.logging_config import get_logger
 from grctl.models import Command
 from grctl.models.api import GrctlAPIResponse
-from grctl.models.command import CmdKind, WorkerTerminateRunCmd, command_decoder
+from grctl.models.command import command_decoder
 from grctl.nats.manifest import NatsManifest
-from grctl.worker.run_manager import RunManager
 
 logger = get_logger(__name__)
 
 
 class WorkerCmdSubscriber:
-    """Owns the lifecycle of the grctl_worker_cmd.{worker_id} core NATS subscription."""
+    """Owns the lifecycle of the grctl_worker_cmd.{worker_id} core NATS subscription.
+
+    Decodes the wire envelope and forwards the Command to `handler`, relaying
+    its success/failure back as the reply. Dispatch on CmdKind is business
+    logic this subscriber doesn't own.
+    """
 
     def __init__(
         self,
         nc: NatsClient,
         manifest: NatsManifest,
         worker_id: str,
-        run_manager: RunManager,
+        handler: Callable[[Command], Awaitable[bool]],
     ) -> None:
         self._nc = nc
         self._manifest = manifest
         self._worker_id = worker_id
-        self._run_manager = run_manager
+        self._handler = handler
         self._subscription = None
 
     async def start(self) -> None:
@@ -46,16 +52,5 @@ class WorkerCmdSubscriber:
             await msg.respond(msgspec.msgpack.encode(GrctlAPIResponse(success=False)))
             return
 
-        success = await self._dispatch_command(cmd)
+        success = await self._handler(cmd)
         await msg.respond(msgspec.msgpack.encode(GrctlAPIResponse(success=success)))
-
-    async def _dispatch_command(self, cmd: Command) -> bool:
-        match cmd.kind:
-            case CmdKind.worker_terminate_run:
-                if isinstance(cmd.msg, WorkerTerminateRunCmd):
-                    return self._run_manager.terminate_run(cmd.msg.run_id)
-                logger.warning("Invalid worker terminate run command: %s", cmd.msg)
-                return False
-            case _:
-                logger.warning("Unknown worker command kind: %s", cmd.kind)
-                return False

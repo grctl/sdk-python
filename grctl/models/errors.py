@@ -12,3 +12,7 @@ class WorkflowAlreadyRunningError(WorkflowError):
 
 class WorkflowTypeNotRegisteredError(WorkflowError):
     """Raised when the server has no registered worker for the requested workflow type."""
+
+
+class WorkflowStepAlreadyExecutedError(Exception):
+    """Raised when a directive names a run_id that already has an execution in flight."""

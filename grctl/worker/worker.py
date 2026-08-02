@@ -12,11 +12,7 @@ from functools import cached_property
 
 from grctl.logging_config import get_logger
 from grctl.nats.codec import CodecRegistry
-from grctl.nats.connection import Connection
-from grctl.nats.wf_subscriber import Subscriber
-from grctl.worker.registration import build_catalog, register_workflow_types
-from grctl.worker.run_manager import RunManager
-from grctl.worker.worker_cmd_subscriber import WorkerCmdSubscriber
+from grctl.worker.manager import Connection, WorkerManager
 from grctl.workflow.workflow import Workflow
 
 logger = get_logger(__name__)
@@ -54,9 +50,7 @@ class Worker:
         self._name = name
         self._stop_event = asyncio.Event()
         self._startup_event = asyncio.Event()
-        self._subscriber: Subscriber | None = None
-        self._worker_cmd_subscriber: WorkerCmdSubscriber | None = None
-        self._run_manager: RunManager | None = None
+        self._manager: WorkerManager | None = None
         self._startup_error: Exception | None = None
         self._codec = codec or CodecRegistry()
 
@@ -84,7 +78,7 @@ class Worker:
     async def run(self) -> None:
         """Run the worker and begin processing messages.
 
-        Creates RunManager for workflow execution and subscribes to workflow subjects.
+        Registers the workflow catalog and subscribes to workflow subjects.
         """
         self._startup_event.clear()
         self._startup_error = None
@@ -94,7 +88,8 @@ class Worker:
         )
 
         try:
-            await self._setup()
+            self._manager = WorkerManager(self._workflows, self._connection, self.worker_id, self.worker_name)
+            await self._manager.start()
             self._startup_event.set()
             logger.info(f"Worker {self.worker_name} ({self.worker_id}) started and ready to process messages")
 
@@ -110,39 +105,8 @@ class Worker:
         await asyncio.wait_for(self._startup_event.wait(), timeout=timeout_ms)
         if self._startup_error is not None:
             raise self._startup_error
-        if self._subscriber is None:
-            raise RuntimeError("Worker startup completed without creating a subscriber")
-
-    async def _setup(self) -> None:
-        self._run_manager = RunManager(
-            worker_name=self.worker_name,
-            worker_id=self.worker_id,
-            workflows=self._workflows,
-            connection=self._connection,
-        )
-
-        # Register workflow types with the server before claiming any work.
-        # A failure here raises and aborts startup — fail fast, loud.
-        catalog = build_catalog(self._workflows)
-        await register_workflow_types(self._connection, self.worker_id, catalog)
-
-        wf_types = [wf.workflow_type for wf in self._workflows]
-        self._subscriber = Subscriber(
-            js=self._connection.jetstream,
-            manifest=self._connection.manifest,
-            wf_types=wf_types,
-            run_manager=self._run_manager,
-            logger=logger,
-        )
-        await self._subscriber.start()
-
-        self._worker_cmd_subscriber = WorkerCmdSubscriber(
-            nc=self._connection.nc,
-            manifest=self._connection.manifest,
-            worker_id=self.worker_id,
-            run_manager=self._run_manager,
-        )
-        await self._worker_cmd_subscriber.start()
+        if self._manager is None:
+            raise RuntimeError("Worker startup completed without creating a manager")
 
     async def stop(self, shutdown_timeout: float = 30.0) -> None:
         """Stop the worker gracefully.
@@ -150,7 +114,6 @@ class Worker:
         Shutdown sequence:
         1. Stop accepting new messages
         2. Wait for in-flight workflows to complete (with timeout)
-        3. Close NATS connection
 
         Args:
             shutdown_timeout: Max seconds to wait for in-flight workflows
@@ -158,33 +121,9 @@ class Worker:
         """
         logger.info("Stopping worker - initiating graceful shutdown...")
 
-        # 1. Stop accepting new messages
-        if self._worker_cmd_subscriber is not None:
-            await self._worker_cmd_subscriber.stop()
-            self._worker_cmd_subscriber = None
+        if self._manager is not None:
+            await self._manager.stop(shutdown_timeout)
 
-        if self._subscriber is not None:
-            logger.info("Stopping subscriber (no new messages will be accepted)")
-            await self._subscriber.stop()
-
-        # 2. Wait for in-flight workflows with timeout
-        if self._run_manager:
-            running_count = self._run_manager.get_running_count()
-            if running_count > 0:
-                logger.info(f"Waiting for {running_count} in-flight workflows (timeout: {shutdown_timeout}s)")
-                try:
-                    await asyncio.wait_for(self._run_manager.shutdown(), timeout=shutdown_timeout)
-                    logger.info("All in-flight workflows completed successfully")
-                except TimeoutError:
-                    logger.warning(
-                        f"Shutdown timeout after {shutdown_timeout}s - "
-                        f"terminating {self._run_manager.get_running_count()} remaining workflows"
-                    )
-
-        # 3. Close NATS connection
-        await self._connection.close()
-
-        # 4. Signal stop event (releases _process_messages)
         self._stop_event.set()
 
         logger.info("Worker stopped gracefully")

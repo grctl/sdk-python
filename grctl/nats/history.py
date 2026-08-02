@@ -18,14 +18,18 @@ _FETCH_BATCH_SIZE = 256
 _FETCH_TIMEOUT_SECONDS = 0.25
 
 
-class HistoryStore:
-    nc: NATSClient
-    manifest: NatsManifest
-    codec: CodecRegistry
+class NatsHistory:
+    """Single NATS impl of the history reader and writer ports.
 
-    def __init__(self, nc: NATSClient, manifest: NatsManifest) -> None:
+    Reader side (get_run_history / fetch_step_history) pull-subscribes over the
+    run's history subject; writer side (append) publishes onto it. The domain
+    depends only on the narrow reader/writer protocols this satisfies.
+    """
+
+    def __init__(self, nc: NATSClient, manifest: NatsManifest, codec: CodecRegistry) -> None:
         self.js = nc.jetstream()
         self.manifest = manifest
+        self.codec = codec
 
     async def get_run_history(self, wf_id: str, run_id: str) -> list[HistoryEvent]:
         history_subject = self.manifest.history_subject(wf_id=wf_id, run_id=run_id)

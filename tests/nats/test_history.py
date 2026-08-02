@@ -1,16 +1,19 @@
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nats.js.api import AckPolicy, DeliverPolicy
 
 from grctl.models import HistoryEvent, HistoryKind, RunStarted, TaskCompleted, history_encoder
-from grctl.nats.history_fetch import fetch_step_history
+from grctl.nats.codec import CodecRegistry
+from grctl.nats.history import NatsHistory
 from grctl.nats.manifest import NatsManifest
 
 
-def _event_bytes(event: HistoryEvent, encoder) -> bytes:
-    return encoder(event)
+def _make_history(js: AsyncMock, manifest: NatsManifest) -> NatsHistory:
+    nc = MagicMock()
+    nc.jetstream = MagicMock(return_value=js)
+    return NatsHistory(nc, manifest, CodecRegistry())
 
 
 @pytest.mark.asyncio
@@ -50,14 +53,15 @@ async def test_fetch_step_history_filters_to_operation_events(manifest) -> None:
     subscription.fetch = AsyncMock(
         side_effect=[
             [
-                AsyncMock(data=_event_bytes(step_started, history_encoder)),
-                AsyncMock(data=_event_bytes(task_completed, history_encoder)),
+                AsyncMock(data=history_encoder(step_started)),
+                AsyncMock(data=history_encoder(task_completed)),
             ],
             TimeoutError(),
         ]
     )
 
-    events = await fetch_step_history(js, manifest, wf_id, run_id, history_seq_id=10)
+    history = _make_history(js, manifest)
+    events = await history.fetch_step_history(wf_id, run_id, history_seq_id=10)
 
     assert len(events) == 1
     assert events[0].operation_id == "fetch_data:1"
@@ -91,7 +95,8 @@ async def test_fetch_step_history_returns_empty_when_no_operation_events(manifes
         ]
     )
 
-    events = await fetch_step_history(js, manifest, "wf-1", "run-1", history_seq_id=20)
+    history = _make_history(js, manifest)
+    events = await history.fetch_step_history("wf-1", "run-1", history_seq_id=20)
 
     assert events == []
     subscription.unsubscribe.assert_awaited_once()
@@ -142,7 +147,8 @@ async def test_fetch_step_history_preserves_order(manifest: NatsManifest) -> Non
         ]
     )
 
-    events = await fetch_step_history(js, manifest, "wf-1", "run-1", history_seq_id=30)
+    history = _make_history(js, manifest)
+    events = await history.fetch_step_history("wf-1", "run-1", history_seq_id=30)
 
     assert [event.operation_id for event in events] == ["a:1", "b:1"]
     subscription.unsubscribe.assert_awaited_once()

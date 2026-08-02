@@ -54,7 +54,7 @@ async def test_step_handlers_default_to_a_ten_second_timeout() -> None:
         return name
 
     assert wf.step_names == ["my_step"]
-    assert wf._step_handlers["my_step"].timeout == timedelta(seconds=10)  # noqa: SLF001
+    assert wf._step_handlers["my_step"].timeout == timedelta(seconds=10)
 
 
 async def test_step_handler_honors_a_custom_timeout() -> None:
@@ -64,7 +64,7 @@ async def test_step_handler_honors_a_custom_timeout() -> None:
     async def my_step(ctx: Ctx) -> Any:
         return None
 
-    assert wf._step_handlers["my_step"].timeout == timedelta(seconds=30)  # noqa: SLF001
+    assert wf._step_handlers["my_step"].timeout == timedelta(seconds=30)
 
 
 async def test_registering_a_duplicate_step_name_raises() -> None:
@@ -77,7 +77,7 @@ async def test_registering_a_duplicate_step_name_raises() -> None:
     with pytest.raises(ValueError, match="already registered"):
 
         @wf.step()
-        async def my_step(ctx: Ctx) -> Any:  # noqa: F811
+        async def my_step(ctx: Ctx) -> Any:
             return None
 
 
@@ -164,7 +164,7 @@ async def test_get_handler_spec_skips_the_first_parameter_and_resolves_types() -
 
 
 async def test_get_handler_spec_raises_without_a_type_annotation() -> None:
-    async def handler(ctx: Ctx, name) -> None:  # noqa: ANN001
+    async def handler(ctx: Ctx, name) -> None:
         return None
 
     with pytest.raises(TypeError, match="must have a type annotation"):
