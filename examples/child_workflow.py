@@ -7,8 +7,8 @@ import ulid
 
 from grctl.client import Client, setup_logging
 from grctl.nats import Connection
-from grctl.worker import Context, Worker, task
-from grctl.workflow import Directive, Workflow
+from grctl.worker import Worker
+from grctl.workflow import Context, Directive, Workflow, task
 
 setup_logging(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ async def record_transaction(transaction_id: str, amount: float) -> str:
 @payment_wf.step(start=True)
 async def payment_start(ctx: Context, amount: float) -> Directive:
     ctx.store.set("amount", amount)
-    ctx.logger.info(f"Payment workflow started for amount ${amount}")
+    logger.info(f"Payment workflow started for amount ${amount}")
     return ctx.next.step(payment_process)
 
 
@@ -67,7 +67,7 @@ async def payment_record(ctx: Context) -> Directive:
     status = await record_transaction(transaction_id, amount)
     ctx.store.set("status", status)
 
-    ctx.logger.info(f"Payment completed with status: {status}")
+    logger.info(f"Payment completed with status: {status}")
 
     res = {"status": status, "transaction_id": transaction_id}
     await ctx.send_to_parent(event_name="payment_completed", payload=res)
@@ -84,7 +84,7 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
     validated_id, validated_amount = await validate_order(order_id, amount)
     ctx.store.set("order_id", validated_id)
     ctx.store.set("amount", validated_amount)
-    ctx.logger.info(f"Order workflow started for order {order_id}")
+    logger.info(f"Order workflow started for order {order_id}")
 
     payment_workflow_id = f"payment-{validated_id}-{ulid.ULID()}"
     payment_handle = await ctx.start_child(
@@ -95,7 +95,7 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
     )
 
     ctx.store.set("payment_workflow_id", payment_handle.run_info.id)
-    ctx.logger.info(
+    logger.info(
         "Started child payment workflow %s for order %s",
         payment_handle.run_info.id,
         validated_id,
@@ -107,14 +107,14 @@ async def order_start(ctx: Context, order_id: str, amount: float) -> Directive:
 async def handle_payment_result(ctx: Context, status: str, transaction_id: str) -> Directive:
     order_id = await ctx.store.get("order_id", str)
 
-    ctx.logger.info(f"Order {order_id} received payment result: {status}")
+    logger.info(f"Order {order_id} received payment result: {status}")
 
     ctx.store.set("payment_status", status)
 
     message = f"Order {order_id} completed with payment status: {status} transaction_id: {transaction_id}"
     ctx.store.set("message", message)
 
-    ctx.logger.info(f"Final message: {message}")
+    logger.info(f"Final message: {message}")
     return ctx.next.complete(message)
 
 

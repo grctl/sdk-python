@@ -34,9 +34,6 @@ async def test_child_workflow_example_end_to_end() -> None:
             timeout=timedelta(seconds=30),
         )
 
-        await asyncio.sleep(2)
-        await order_handle.send("send_to_payment")
-
         result = await asyncio.wait_for(order_handle.future, timeout=30)
 
         assert "ORDER-001" in result

@@ -5,8 +5,8 @@ from datetime import timedelta
 
 from grctl.client import Client, get_logger, setup_logging
 from grctl.nats import Connection
-from grctl.worker import Context, Worker, task
-from grctl.workflow import Directive, Workflow
+from grctl.worker import Worker
+from grctl.workflow import Context, Directive, Workflow, task
 
 setup_logging(level=logging.DEBUG)
 logger = get_logger(__name__)
@@ -26,7 +26,7 @@ async def tick(iteration: int) -> int:
 
 @ticker.step(start=True)
 async def start(ctx: Context, iterations: int) -> Directive:
-    ctx.logger.info(f"Starting tick step with {iterations} iterations")
+    logger.info(f"Starting tick step with {iterations} iterations")
 
     ctx.store.set("iterations", iterations)
     return ctx.next.step(tick_step)
@@ -38,7 +38,7 @@ async def tick_step(ctx: Context) -> Directive:
 
     for i in range(iterations):
         await tick(i)
-        ctx.logger.info(f"Tick iteration: {i}")
+        logger.info(f"Tick iteration: {i}")
 
     return ctx.next.complete(iterations)
 
