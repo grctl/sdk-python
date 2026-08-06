@@ -11,6 +11,7 @@ from typing import Any, Protocol, TypeVar, overload
 
 from ulid import ULID
 
+from grctl.exec.codec import Codec
 from grctl.models import HistoryEvent, RunInfo
 from grctl.workflow.future import HistoryListenerFactory
 from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
@@ -52,6 +53,9 @@ class Connection(Protocol):
 
     @property
     def history_reader(self) -> RunHistoryReader: ...
+
+    @property
+    def codec(self) -> Codec: ...
 
 
 class Client:
@@ -115,6 +119,7 @@ class Client:
             listener_factory=self._connection.listener_factory,
             sender_id=self.id,
             logger=logger,
+            decoder=self._connection.codec,
         )
         await handle.attach()
         return handle
@@ -154,6 +159,7 @@ class Client:
             sender_id=self.id,
             logger=logger,
             return_type=return_type,
+            decoder=self._connection.codec,
         )
 
         # Start the workflow future (subscribe to events and publish run command)

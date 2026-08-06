@@ -5,7 +5,6 @@ import pytest
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context
-from grctl.exec.journal import Journal
 from grctl.exec.operations import StartChild
 from grctl.models import ChildWorkflowStarted, HistoryEvent, HistoryKind, RunInfo
 from tests.unit.exec.fakes import (
@@ -58,7 +57,7 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
         "child-1",
         {"x": 1},
     )
-    operation_id = Journal(step_history=[], appender=FakeAppender()).generate_operation_id(op.name)
+    operation_id = op.operation_id(1)
 
     recorded_event = HistoryEvent(
         wf_id="wf-1",

@@ -22,6 +22,7 @@ from grctl.serde.errors import (
     UnsupportedTypeError,
     VersionMismatchError,
 )
+from grctl.serde.fingerprint import fingerprint
 from grctl.serde.registry import SerializerRegistry
 from grctl.serde.serializer import MigratingSerializer, Serializer, TypeSerializer
 
@@ -40,6 +41,7 @@ __all__ = [
     "decode",
     "default_registry",
     "encode",
+    "fingerprint",
     "register",
     "register_predicate",
     "serializer",

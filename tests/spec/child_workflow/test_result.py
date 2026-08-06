@@ -28,7 +28,7 @@ async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_cli
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+        await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
         return ctx.next.wait()
 
     @parent_wf.step(event=True, name="result_ready")
@@ -60,7 +60,7 @@ async def test_run_child_returns_child_result(worker, grctl_client: Client) -> N
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        result = await ctx.run_child(child_wf_type, f"{ctx.run.wf_id}-child")
+        result = await ctx.run_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
         return ctx.next.complete(result)
 
     await worker([parent_wf, child_wf])
@@ -88,7 +88,7 @@ async def test_parent_can_await_child_future_in_same_step(worker, grctl_client: 
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        handle = await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+        handle = await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
         result = await handle.future
         return ctx.next.complete(result)
 

@@ -10,14 +10,14 @@ tests only need to assert what's specific to the operation under test.
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from grctl.exec.child_tracker import ChildTracker
-from grctl.exec.codec import Codec
 from grctl.exec.context import Context, Store
 from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal
-from grctl.exec.kv_manager import Caster, KVManager
+from grctl.exec.kv_manager import KVManager
+from grctl.exec.manager import Codec
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
 from grctl.nats.codec import MsgspecCodec
@@ -122,11 +122,12 @@ def make_context(  # noqa: PLR0913
         step_infos if step_infos is not None else {"current_step": StepInfo(timeout_ms=0)},
     )
     context_codec = codec if codec is not None else MsgspecCodec()
-    kvman = store if store is not None else KVManager(FakeKVApi(), cast("Caster", context_codec))
+    kvman = store if store is not None else KVManager(FakeKVApi(), context_codec)
     return Context(
         journal,
         run_info,
         worker_id,
+        "current_step",
         drc_factory,
         kvman,
         workflow_api=workflow_api if workflow_api is not None else FakeWorkflowAPI(),

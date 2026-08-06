@@ -1,4 +1,11 @@
-from grctl.workflow.handle import WorkflowHandle
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Import-time only: grctl.workflow's package init imports grctl.exec.context, which
+    # reaches back here, so importing the handle for real would close that cycle.
+    from grctl.workflow.handle import WorkflowHandle
 
 
 class ChildTracker:

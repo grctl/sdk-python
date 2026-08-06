@@ -41,7 +41,7 @@ class HistoryListenerFactory(Protocol):
 class ResultDecoder(Protocol):
     """Converts a run's raw completion value into a caller-requested type."""
 
-    def from_primitive(self, raw: Any, tp: type) -> Any: ...
+    def from_primitive(self, raw: Any, tp: type | None = None) -> Any: ...
 
 
 class WorkflowFuture(asyncio.Future[Any]):
@@ -135,7 +135,7 @@ class WorkflowFuture(asyncio.Future[Any]):
             self._logger.error("Run %s completed event payload mismatch: %s", self.run_info.id, type(payload))
             return
         result = payload.result
-        if self._return_type is not None and self._decoder is not None:
+        if self._decoder is not None:
             result = self._decoder.from_primitive(result, self._return_type)
         self.set_result(result)
 

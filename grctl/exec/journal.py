@@ -5,8 +5,22 @@ from typing import Any, NamedTuple, Protocol
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import HistoryEvent, HistoryKind
 from grctl.models.history import HistoryEvents
+from grctl.serde import fingerprint
 
 Outcome = tuple[HistoryKind, HistoryEvents]
+
+
+def identify(name: str, seq: int, args: dict[str, Any] | None = None) -> str:
+    """Build an operation id from a name, a call position, and what makes the call distinct.
+
+    Operations compose their own ids through this so the format stays uniform, and so
+    the readable part survives: the id is copied into task history and shown to whoever
+    is reading a run back, who needs to see which call it was and not only that two
+    digests differ.
+    """
+    if not args:
+        return f"{name}:{seq}"
+    return f"{name}:{seq}:{fingerprint(args)}"
 
 
 class NonDeterminismError(Exception):
@@ -26,6 +40,32 @@ class StepHistoryAppender(Protocol):
     async def append(self, entry: HistoryCreateInput) -> None: ...
 
 
+class OperationProgress:
+    """What an operation may report while it is still running, and what it reported before.
+
+    Most operations resolve in one shot and never touch this. A task with a retry
+    policy does not: it makes several attempts, and the record of the attempts that
+    failed has to outlive the worker making them. Attempts already recorded are how a
+    task that gets re-delivered after its worker died knows not to start its attempt
+    budget over.
+
+    Entries recorded here are observability-only — they are not outcomes, take no part
+    in replay matching, and never resolve the operation.
+    """
+
+    def __init__(self, operation_id: str, step_history: list[HistoryEvent], journal: "Journal") -> None:
+        self.operation_id = operation_id
+        self._step_history = step_history
+        self._journal = journal
+
+    def count(self, kind: HistoryKind) -> int:
+        """Entries of `kind` earlier attempts of this same operation already recorded."""
+        return sum(1 for e in self._step_history if e.kind == kind and e.operation_id == self.operation_id)
+
+    async def record(self, kind: HistoryKind, payload: HistoryEvents) -> None:
+        await self._journal.record(kind, payload, self.operation_id)
+
+
 class Operation(Protocol):
     """A single durable unit of work: a task call, a sleep, ctx.now(), ctx.uuid4(), etc.
 
@@ -36,14 +76,29 @@ class Operation(Protocol):
     @property
     def name(self) -> str: ...
 
-    @property
-    def args(self) -> dict[str, Any]: ...
+    def operation_id(self, seq: int) -> str:
+        """Identify this call for replay matching, at call position `seq` within the step.
+
+        Two executions of a step that reached this point having done the same things must
+        produce the same id, and any difference that would change the outcome must produce
+        a different one — otherwise replay hands back a result computed from an input this
+        run never produced.
+
+        `seq` covers call position. Everything else is the operation's own business: a
+        task's arguments, a child's workflow id, a sleep's duration. An input left out of
+        the id is a divergence replay will not catch.
+        """
+        ...
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]: ...
 
-    async def perform(self) -> Outcome:
-        """Run the underlying work. Never raises — failure becomes data."""
+    async def perform(self, progress: OperationProgress, /) -> Outcome:
+        """Run the underlying work. Never raises — failure becomes data.
+
+        `progress` is this operation's own slice of the journal. Operations that resolve
+        in one shot ignore it.
+        """
         ...
 
     def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> Any:
@@ -80,29 +135,25 @@ class Journal:
         self._cursor: int = 0
         self._pending: dict[str, PendingOperation] = {}
 
-    def generate_operation_id(self, fn_name: str) -> str:
-        """Identify an operation by its position in the run, not by its arguments.
-
-        Replay matches on call order — the sequence number is what makes that
-        deterministic. Keeping argument values out of the identity means an id
-        never depends on how a user type happens to be serialised, so evolving
-        a serialiser cannot invalidate runs that are already in flight.
-        """
-        self._seq += 1
-        return f"{fn_name}:{self._seq}"
-
     @property
     def is_replaying(self) -> bool:
         return self._cursor < len(self.step_history)
 
     async def run(self, operation: Operation) -> Any:
-        operation_id = self.generate_operation_id(operation.name)
+        """Perform an operation, or replay the outcome history already holds for it.
+
+        The journal owns call position and nothing else about identity: it hands the
+        operation its sequence number and the operation says what it is.
+        """
+        self._seq += 1
+        operation_id = operation.operation_id(self._seq)
 
         future = await self.next(operation.acceptable_kinds, operation_id)
         if future is not None:
             kind, payload = await future
         else:
-            kind, payload = await operation.perform()
+            progress = OperationProgress(operation_id, self.step_history, self)
+            kind, payload = await operation.perform(progress)
             await self.record(kind, payload, operation_id)
 
         return operation.materialize(kind, payload)
@@ -125,12 +176,25 @@ class Journal:
             if self._cursor >= len(self.step_history):
                 self._pending.pop(operation_id, None)
                 return None  # history exhausted — live execution
-            raise NonDeterminismError(
-                f"Unresolved operation {operation_id} ({acceptable_kinds}) after yield — "
-                f"cursor at {self._cursor}, pending: {list(self._pending.keys())}"
-            )
+            raise NonDeterminismError(self._divergence(operation_id))
 
         return future
+
+    def _divergence(self, operation_id: str) -> str:
+        """Describe how the code diverged from history, for whoever has to read it back.
+
+        Both ids are shown because the difference between them is the diagnosis: a
+        different name means the code calls something else here, a different position
+        means calls were reordered or one was added, a different fingerprint means the
+        same call ran on different inputs.
+        """
+        recorded = self.step_history[self._cursor]
+        return (
+            f"Step replay diverged at history position {self._cursor}.\n"
+            f"  history recorded: {recorded.operation_id} ({recorded.kind})\n"
+            f"  code called:      {operation_id}\n"
+            "The recorded call and this one differ in name, call order, or argument values."
+        )
 
     def _resolve(self) -> None:
         while self._cursor < len(self.step_history):

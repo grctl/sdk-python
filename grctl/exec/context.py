@@ -11,6 +11,7 @@ from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
 from grctl.models import Directive, ErrorDetails, RunInfo
+from grctl.models.directive import RetryPolicy
 from grctl.workflow.future import HistoryListenerFactory
 from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
 
@@ -50,6 +51,7 @@ class Context:
         journal: Journal,
         run_info: RunInfo,
         worker_id: str,
+        step_name: str,
         drc_factory: DrcFactory,
         store: Store,
         workflow_api: WorkflowAPI,
@@ -62,6 +64,7 @@ class Context:
         self._journal = journal
         self._run_info = run_info
         self._worker_id = worker_id
+        self._step_name = step_name
         self._drc_factory = drc_factory
         self._store = store
         self._workflow_api = workflow_api
@@ -70,6 +73,11 @@ class Context:
         self._childs = childs
         self._codec = codec
         self._parent_run = parent_run
+
+    @property
+    def run_info(self) -> RunInfo:
+        """The run this step belongs to — its ids, its type, and its parent if it has one."""
+        return self._run_info
 
     @property
     def next(self) -> Next:
@@ -82,7 +90,18 @@ class Context:
         return self._store
 
     async def run(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
-        task = Task(fn, args, kwargs, self._codec)
+        """Journal a plain async call as a task, without a retry policy."""
+        return await self.run_task(fn, args, kwargs)
+
+    async def run_task(
+        self,
+        fn: Callable[..., Awaitable[Any]],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        retry_policy: RetryPolicy | None = None,
+    ) -> Any:
+        """Journal a task call. Args are passed explicitly so no task parameter name is reserved."""
+        task = Task(fn, args, kwargs, self._codec, self._step_name, retry_policy)
         return await self._journal.run(task)
 
     async def now(self) -> datetime:

@@ -5,8 +5,8 @@ from datetime import timedelta
 
 from grctl.client import Client, get_logger, setup_logging
 from grctl.nats import Connection
-from grctl.worker import Worker
-from grctl.workflow import Context, Directive, Workflow, task
+from grctl.worker import Context, Worker, task
+from grctl.workflow import Directive, Workflow
 
 setup_logging(level=logging.DEBUG)
 logger = get_logger(__name__)

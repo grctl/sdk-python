@@ -62,7 +62,7 @@ def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         @parent_wf.step()
         async def parent_main(ctx: Context) -> Directive:
-            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete("parent-done")
@@ -104,7 +104,7 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
 
         @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.step(event=True, name="child_done")
@@ -144,7 +144,7 @@ def _ndet_send_event_v1_worker(parent_wf_type: str, child_wf_type: str, pause_ev
 
         @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.step(event=True, name="status_v1")
@@ -183,7 +183,7 @@ def _ndet_send_event_v2_worker(parent_wf_type: str, child_wf_type: str) -> None:
 
         @parent_wf.step(start=True)
         async def parent_start(ctx: Context) -> Directive:
-            await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
             return ctx.next.wait()
 
         @parent_wf.step(event=True, name="status_v1")
@@ -224,7 +224,7 @@ def _ndet_child_id_v1_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         @parent_wf.step()
         async def parent_main(ctx: Context) -> Directive:
-            child_id = f"{ctx.run.wf_id}-child"
+            child_id = f"{ctx.run_info.wf_id}-child"
             await ctx.start_child(child_wf_type, child_id)
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
@@ -305,7 +305,7 @@ def _run_child_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
 
         @parent_wf.step()
         async def parent_run(ctx: Context) -> Directive:
-            result = await ctx.run_child(child_wf_type, f"{ctx.run.wf_id}-child")
+            result = await ctx.run_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
             return ctx.next.complete(result)
 
         conn = await Connection.connect(servers=[nats_url])

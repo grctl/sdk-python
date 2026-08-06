@@ -29,7 +29,7 @@ async def test_on_completed_step_receives_child_result(worker, grctl_client: Cli
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
+        await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()
 
     @parent_wf.step()
@@ -62,7 +62,7 @@ async def test_on_completed_step_receives_child_error(worker, grctl_client: Clie
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
+        await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()
 
     @parent_wf.step()
@@ -96,7 +96,7 @@ async def test_on_completed_step_receives_pydantic_result(worker, grctl_client: 
 
     @parent_wf.step(start=True)
     async def parent_start(ctx: Context) -> Directive:
-        await ctx.start_child(child_wf_type, f"{ctx.run.wf_id}-child", on_completed_step=on_done)
+        await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child", on_completed_step=on_done)
         return ctx.next.wait()
 
     @parent_wf.step()

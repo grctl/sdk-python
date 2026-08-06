@@ -8,7 +8,7 @@ from typing import Any
 from ulid import ULID
 
 from grctl.exec.child_tracker import ChildTracker
-from grctl.exec.journal import Outcome
+from grctl.exec.journal import OperationProgress, Outcome, identify
 from grctl.models import (
     ChildWorkflowStarted,
     HistoryKind,
@@ -31,15 +31,14 @@ class Now:
     def name(self) -> str:
         return "now"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {}
+    def operation_id(self, seq: int) -> str:
+        return identify(self.name, seq)
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.timestamp_recorded})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.timestamp_recorded, TimestampRecorded(value=datetime.now(UTC))
 
     def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> datetime:  # noqa: ARG002
@@ -55,15 +54,14 @@ class Random:
     def name(self) -> str:
         return "random"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {}
+    def operation_id(self, seq: int) -> str:
+        return identify(self.name, seq)
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.random_recorded})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.random_recorded, RandomRecorded(value=_random())  # noqa: S311
 
     def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> float:  # noqa: ARG002
@@ -79,15 +77,14 @@ class Uuid4:
     def name(self) -> str:
         return "uuid4"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {}
+    def operation_id(self, seq: int) -> str:
+        return identify(self.name, seq)
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.uuid_recorded})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.uuid_recorded, UuidRecorded(value=str(uuid.uuid4()))
 
     def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> uuid.UUID:  # noqa: ARG002
@@ -101,22 +98,22 @@ class Sleep:
 
     def __init__(self, duration: timedelta) -> None:
         self._duration = duration
+        self._duration_ms = int(duration.total_seconds() * 1000)
 
     @property
     def name(self) -> str:
         return "sleep"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {"duration_ms": int(self._duration.total_seconds() * 1000)}
+    def operation_id(self, seq: int) -> str:
+        return identify(self.name, seq, {"duration_ms": self._duration_ms})
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.sleep_recorded})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         await asyncio.sleep(self._duration.total_seconds())
-        return HistoryKind.sleep_recorded, SleepRecorded(duration_ms=int(self._duration.total_seconds() * 1000))
+        return HistoryKind.sleep_recorded, SleepRecorded(duration_ms=self._duration_ms)
 
     def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> None:  # noqa: ARG002
         if not isinstance(payload, SleepRecorded):
@@ -162,20 +159,23 @@ class StartChild:
     def name(self) -> str:
         return "start_child"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {
-            "wf_type": self._workflow_type,
-            "wf_id": self._workflow_id,
-            "workflow_input": self._workflow_input,
-            "workflow_timeout": int(self._workflow_timeout.total_seconds()) if self._workflow_timeout else None,
-        }
+    def operation_id(self, seq: int) -> str:
+        return identify(
+            self.name,
+            seq,
+            {
+                "wf_type": self._workflow_type,
+                "wf_id": self._workflow_id,
+                "workflow_input": self._workflow_input,
+                "workflow_timeout": int(self._workflow_timeout.total_seconds()) if self._workflow_timeout else None,
+            },
+        )
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.child_started})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         run_id = str(ULID())
         self._handle = self._build_handle(run_id, self._workflow_input)
         await self._handle.start()
@@ -236,15 +236,14 @@ class SendToParent:
     def name(self) -> str:
         return "send_to_parent"
 
-    @property
-    def args(self) -> dict[str, Any]:
-        return {"event_name": self._event_name, "payload": self._payload}
+    def operation_id(self, seq: int) -> str:
+        return identify(self.name, seq, {"event_name": self._event_name, "payload": self._payload})
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:
         return frozenset({HistoryKind.parent_event_sent})
 
-    async def perform(self) -> Outcome:
+    async def perform(self, _progress: OperationProgress) -> Outcome:
         await self._workflow_api.send_event(self._parent_run, self._event_name, self._payload, self._worker_id)
         return HistoryKind.parent_event_sent, ParentEventSent(
             event_name=self._event_name,

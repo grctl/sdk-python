@@ -54,7 +54,8 @@ class Execution:
     # open when the step returns is abandoned and gets discarded.
     childs: ChildTracker
 
-    # The time at which this execution started.
+    # When this attempt at the step began. A re-delivered step gets a fresh one: the
+    # duration reported is this attempt's, not the wall time since the step first ran.
     started_at: datetime
 
     def __init__(
@@ -70,6 +71,7 @@ class Execution:
         self.directive = directive
         self.handler_config = handler_config
         self.childs = ChildTracker()
+        self.started_at = datetime.now(UTC)
         self.kvman = deps.kvman
         self.step_history = deps.step_history or []
         self.history_appender = deps.history_appender
@@ -82,6 +84,7 @@ class Execution:
             self.journal,
             self.run_info,
             worker_info.id,
+            self.step_name,
             self.step_directive_factory,
             self.kvman,
             deps.workflow_api,
@@ -104,7 +107,10 @@ class Execution:
         await self.send_step_picked_up()
         handler = self.handler_config.handler
         payload = self.get_serialised_handler_payload()
-        outcome_directive: Directive
+        # Stays None if the step is cancelled: a step that never reached an outcome has
+        # nothing to report, and what becomes of a run whose worker went away is the
+        # server's decision, not ours.
+        outcome_directive: Directive | None = None
         context_token = None
         try:
             self.is_executing = True
@@ -126,7 +132,8 @@ class Execution:
             # Always release child handles started in this step, even when the handler
             # raised, so an unawaited future never warns or leaks its subscription.
             await self.childs.discard_all()
-            await self.send_step_result(outcome_directive)
+            if outcome_directive is not None:
+                await self.send_step_result(outcome_directive)
 
     async def terminate(self) -> None:
         if self.task is not None:
@@ -160,8 +167,8 @@ class Execution:
         return None
 
     async def send_step_picked_up(self) -> None:
-        if self.step_history is None or len(self.step_history) == 0:
-            self.started_at = datetime.now(UTC)
+        """Announce the step, once. A re-delivered step was already announced by the attempt that died."""
+        if not self.step_history:
             drc = self.step_directive_factory.step_picked_up(step_name=self.step_name, timestamp=self.started_at)
             await self.directive_api.send(drc)
 
@@ -169,8 +176,7 @@ class Execution:
         if not isinstance(directive.msg, NextMessage):
             raise ValueError("Wrong message kind for step result")  # noqa: TRY004
 
-        if self.started_at is not None:
-            duration_ms = int((datetime.now(UTC) - self.started_at).total_seconds() * 1000)
+        duration_ms = int((datetime.now(UTC) - self.started_at).total_seconds() * 1000)
 
         pending_updates = self.kvman.get_pending_updates()
 
