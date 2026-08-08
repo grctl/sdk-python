@@ -1,8 +1,4 @@
-"""Types the wire codec cannot encode on its own, so serialisers actually run.
-
-Deliberately not dataclasses: msgspec encodes those natively and never consults
-a serialiser for them.
-"""
+"""User types that require a serialiser because the wire codec does not know them."""
 
 from decimal import Decimal
 from typing import Any

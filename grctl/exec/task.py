@@ -41,11 +41,13 @@ def reset_current_context(token: Token[Context | None]) -> None:
     """Restore the context that was active before a workflow step started."""
     _current_context.reset(token)
 
+
 @cache
 def _return_type(fn: Callable[..., Awaitable[Any]]) -> Any:
     annotation = inspect.signature(fn).return_annotation
     if annotation is inspect.Signature.empty:
         return Any
+
     def annotation_holder() -> None:
         return None
 

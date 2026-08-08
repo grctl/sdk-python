@@ -318,7 +318,6 @@ async def test_task_returns_pydantic_output(worker, grctl_client: Client) -> Non
     assert result == payload
 
 
-
 async def test_task_returns_msgspec_struct_output(worker, grctl_client: Client) -> None:
     payload = {"name": "struct-output", "count": 29, "tags": ["a", "b"]}
     wf = Workflow(workflow_type=_unique_wf_type("spec_task_serialization_struct_output"))

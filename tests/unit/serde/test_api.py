@@ -1,3 +1,5 @@
+"""Behavioural guarantees for the public serialiser registration API."""
+
 from decimal import Decimal
 from typing import Any
 
@@ -12,47 +14,49 @@ def registry() -> SerializerRegistry:
     return SerializerRegistry()
 
 
-def test_decorator_registers_the_class_it_decorates(registry: SerializerRegistry) -> None:
-    @serializer(Money, registry=registry)
-    class MoneySerializer:
-        def encode(self, value: Money) -> Any:
-            return str(value.amount)
-
-        def decode(self, raw: Any) -> Money:
-            return Money(Decimal(raw), "EUR")
-
-    assert registry.decode(Money, registry.encode(Money(Decimal(5), "EUR"))) == Money(Decimal(5), "EUR")
-
-
-def test_decorator_returns_the_class_unchanged(registry: SerializerRegistry) -> None:
-    @serializer(Money, registry=registry)
-    class MoneySerializer:
-        def encode(self, value: Money) -> Any:
-            return None
-
-        def decode(self, raw: Any) -> Money:
-            return Money(Decimal(0), "EUR")
-
-    assert isinstance(MoneySerializer(), MoneySerializer)
-
-
-def test_decorator_rejects_a_class_that_is_not_a_serializer(registry: SerializerRegistry) -> None:
-    with pytest.raises(TypeError):
-
+class TestDecoratorRegistration:
+    def test_decorated_serializer_registers_the_user_type_at_definition_time(
+        self, registry: SerializerRegistry
+    ) -> None:
         @serializer(Money, registry=registry)
-        class Incomplete:
+        class MoneySerializer:
+            def encode(self, value: Money) -> Any:
+                return str(value.amount)
+
+            def decode(self, raw: Any) -> Money:
+                return Money(Decimal(raw), "EUR")
+
+        assert registry.decode(Money, registry.encode(Money(Decimal(5), "EUR"))) == Money(Decimal(5), "EUR")
+
+    def test_decorator_preserves_the_serializer_class_for_user_code(self, registry: SerializerRegistry) -> None:
+        @serializer(Money, registry=registry)
+        class MoneySerializer:
             def encode(self, value: Money) -> Any:
                 return None
 
+            def decode(self, raw: Any) -> Money:
+                return Money(Decimal(0), "EUR")
 
-def test_register_accepts_an_already_constructed_serializer(registry: SerializerRegistry) -> None:
-    class MoneySerializer:
-        def encode(self, value: Money) -> Any:
-            return str(value.amount)
+        assert isinstance(MoneySerializer(), MoneySerializer)
 
-        def decode(self, raw: Any) -> Money:
-            return Money(Decimal(raw), "EUR")
+    def test_decorator_rejects_an_incomplete_serializer_before_registration(self, registry: SerializerRegistry) -> None:
+        with pytest.raises(TypeError):
 
-    register(Money, MoneySerializer(), registry=registry)
+            @serializer(Money, registry=registry)
+            class Incomplete:
+                def encode(self, value: Money) -> Any:
+                    return None
 
-    assert registry.encode(Money(Decimal(5), "EUR"))["$val"] == "5"
+
+class TestDirectRegistration:
+    def test_constructed_serializer_can_be_registered_without_the_decorator(self, registry: SerializerRegistry) -> None:
+        class MoneySerializer:
+            def encode(self, value: Money) -> Any:
+                return str(value.amount)
+
+            def decode(self, raw: Any) -> Money:
+                return Money(Decimal(raw), "EUR")
+
+        register(Money, MoneySerializer(), registry=registry)
+
+        assert registry.encode(Money(Decimal(5), "EUR"))["$val"] == "5"
