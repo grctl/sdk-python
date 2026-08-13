@@ -59,8 +59,10 @@ class FakeHistoryListener:
 
 
 class CapturingListenerFactory:
-    """Stands in for a HistoryListenerFactory, capturing the handler so tests can
-    deliver synthetic history events directly into the future under test.
+    """Stands in for a HistoryListenerFactory.
+
+    Captures the handler so tests can deliver synthetic history events directly
+    into the future under test.
     """
 
     def __init__(self) -> None:
@@ -83,9 +85,9 @@ class FakeResultDecoder:
 
     def __init__(self, decoded: object = None) -> None:
         self.decoded = decoded
-        self.calls: list[tuple[object, type]] = []
+        self.calls: list[tuple[object, type | None]] = []
 
-    def from_primitive(self, raw: object, tp: type) -> object:
+    def from_primitive(self, raw: object, tp: type | None = None) -> object:
         self.calls.append((raw, tp))
         return self.decoded
 

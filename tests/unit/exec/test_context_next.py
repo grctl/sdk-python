@@ -20,7 +20,7 @@ async def renamed_handler(ctx: object) -> Directive:
     raise AssertionError(ctx)
 
 
-renamed_handler.__grctl_step_name__ = "registered_name"
+renamed_handler.__grctl_step_name__ = "registered_name"  # ty:ignore[unresolved-attribute]
 
 
 class UnnamedHandler:

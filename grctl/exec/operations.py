@@ -41,7 +41,7 @@ class Now:
     async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.timestamp_recorded, TimestampRecorded(value=datetime.now(UTC))
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> datetime:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> datetime:  # noqa: ARG002
         if not isinstance(payload, TimestampRecorded):
             raise TypeError(f"Expected TimestampRecorded payload, got {type(payload)}")
         return payload.value
@@ -64,7 +64,7 @@ class Random:
     async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.random_recorded, RandomRecorded(value=_random())  # noqa: S311
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> float:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> float:  # noqa: ARG002
         if not isinstance(payload, RandomRecorded):
             raise TypeError(f"Expected RandomRecorded payload, got {type(payload)}")
         return payload.value
@@ -87,7 +87,7 @@ class Uuid4:
     async def perform(self, _progress: OperationProgress) -> Outcome:
         return HistoryKind.uuid_recorded, UuidRecorded(value=str(uuid.uuid4()))
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> uuid.UUID:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> uuid.UUID:  # noqa: ARG002
         if not isinstance(payload, UuidRecorded):
             raise TypeError(f"Expected UuidRecorded payload, got {type(payload)}")
         return uuid.UUID(payload.value)
@@ -115,7 +115,7 @@ class Sleep:
         await asyncio.sleep(self._duration.total_seconds())
         return HistoryKind.sleep_recorded, SleepRecorded(duration_ms=self._duration_ms)
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> None:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> None:  # noqa: ARG002
         if not isinstance(payload, SleepRecorded):
             raise TypeError(f"Expected SleepRecorded payload, got {type(payload)}")
 
@@ -183,11 +183,16 @@ class StartChild:
             run_id=run_id, wf_type=self._workflow_type, wf_id=self._workflow_id, input=self._workflow_input
         )
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> WorkflowHandle:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> WorkflowHandle:  # noqa: ARG002
         if not isinstance(payload, ChildWorkflowStarted):
             raise TypeError(f"Expected ChildWorkflowStarted payload, got {type(payload)}")
         if self._handle is None:
             self._handle = self._build_handle(payload.run_id, payload.input)
+        # A replayed handle has no listener behind it, so subscribing here is what lets a
+        # retried step observe a child started by an earlier attempt. On a fresh attempt
+        # perform() already subscribed — before publishing the start command, so no event is
+        # missed — and attaching again is a no-op.
+        await self._handle.attach()
         self._childs.add(self._handle)
         return self._handle
 
@@ -252,6 +257,6 @@ class SendToParent:
             parent_wf_id=self._parent_run.wf_id,
         )
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> None:  # noqa: ARG002
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> None:  # noqa: ARG002
         if not isinstance(payload, ParentEventSent):
             raise TypeError(f"Expected ParentEventSent payload, got {type(payload)}")

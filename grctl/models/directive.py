@@ -75,7 +75,7 @@ class Fail(msgspec.Struct):
 
 
 class FailStep(msgspec.Struct):
-    """Worker directive to mark a step as failed and fail the run."""
+    """Worker directive reporting that a step handler raised; the run fails with it."""
 
     step_name: str
     error: ErrorDetails
@@ -118,8 +118,8 @@ class StepResult(msgspec.Struct):
     duration_ms: int = 0
 
 
-DirectiveMessage = Start | Cancel | Event | Complete | Fail | Step | Wait | StepResult | StepPickedUp
-NextMessage = Step | Fail | Complete | Wait
+DirectiveMessage = Start | Cancel | Event | Complete | Fail | FailStep | Step | Wait | StepResult | StepPickedUp
+NextMessage = Step | Fail | FailStep | Complete | Wait
 
 # Factory map for kind-based deserialization
 directive_factories: dict[str, type[DirectiveMessage]] = {
@@ -128,6 +128,7 @@ directive_factories: dict[str, type[DirectiveMessage]] = {
     "event": Event,
     "complete": Complete,
     "fail": Fail,
+    "fail_step": FailStep,
     "step": Step,
     "wait": Wait,
     "step_result": StepResult,

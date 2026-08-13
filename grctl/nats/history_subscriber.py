@@ -34,8 +34,7 @@ class HistorySubscriber:
 
     async def start(self) -> None:
         if self._subscription is not None:
-            msg = "HistorySubscriber already started"
-            raise RuntimeError(msg)
+            return
 
         self._subscription = await self._js.subscribe(
             self._history_subject,

@@ -5,6 +5,7 @@ enabling clients to start workflows and track execution through observable event
 """
 
 from grctl.models.api import GrctlAPIError, GrctlAPIResponse
+from grctl.models.child import ChildOutcome
 from grctl.models.command import (
     CancelCmd,
     CmdKind,
@@ -145,6 +146,7 @@ __all__ = [  # noqa: RUF022
     "history_decoder",
     "history_encoder",
     # Common types
+    "ChildOutcome",
     "RunInfo",
     "RunStateKind",
     "RunStatus",

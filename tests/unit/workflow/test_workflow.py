@@ -93,7 +93,7 @@ async def test_event_step_explicit_name_registers_only_that_name() -> None:
     assert wf.step_names == ["approved"]
     assert wf.event_names == ["approved"]
     assert wf.step_handler("approved").handler is handler
-    assert handler.__grctl_step_name__ == "approved"
+    assert handler.__grctl_step_name__ == "approved"  # ty:ignore[unresolved-attribute]
     with pytest.raises(ValueError, match="not registered"):
         wf.step_handler("handler")
 

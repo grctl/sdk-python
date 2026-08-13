@@ -131,24 +131,9 @@ def make_blocking_start_workflow(
     return wf
 
 
-# ─── Static shared workflows ──────────────────────────────────────────────────
-# Fixed workflow types kept for tests that assert on specific step/function names.
-# Prefer factories for new tests.
+# ─── Shared tasks ─────────────────────────────────────────────────────────────
 
 
 @task
 async def echo_task(value: str) -> str:
     return value
-
-
-two_step_wf = Workflow(workflow_type="spec_step_two_step")
-
-
-@two_step_wf.step(start=True)
-async def two_step_start(ctx: Context) -> Directive:
-    return ctx.next.step(two_step_second)
-
-
-@two_step_wf.step()
-async def two_step_second(ctx: Context) -> Directive:
-    return ctx.next.complete("two-step-ok")

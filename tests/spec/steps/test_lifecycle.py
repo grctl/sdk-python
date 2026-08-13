@@ -5,7 +5,7 @@ import ulid
 
 from grctl.models import HistoryKind
 from tests.spec.history import HistoryAccess
-from tests.spec.workflows import make_echo_workflow, two_step_wf
+from tests.spec.workflows import make_echo_workflow, make_two_step_workflow
 
 
 async def test_step_emits_started_and_completed(worker, grctl_client) -> None:
@@ -31,11 +31,12 @@ async def test_step_emits_started_and_completed(worker, grctl_client) -> None:
 
 
 async def test_multi_step_workflow_emits_events_in_order(worker, grctl_client) -> None:
-    await worker([two_step_wf])
+    wf = make_two_step_workflow(prefix="spec_steps_lifecycle_multi_step")
+    await worker([wf])
 
     wf_id = str(ulid.ULID())
     handle = await grctl_client.start_workflow(
-        type=two_step_wf.workflow_type,
+        type=wf.workflow_type,
         id=wf_id,
         input={},
         timeout=timedelta(seconds=30),
@@ -54,8 +55,8 @@ async def test_multi_step_workflow_emits_events_in_order(worker, grctl_client) -
 
     assert step_events[0].msg.step_name == "start"  # ty:ignore[unresolved-attribute]
     assert step_events[1].msg.step_name == "start"  # ty:ignore[unresolved-attribute]
-    assert step_events[2].msg.step_name == "two_step_second"  # ty:ignore[unresolved-attribute]
-    assert step_events[3].msg.step_name == "two_step_second"  # ty:ignore[unresolved-attribute]
+    assert step_events[2].msg.step_name == "second_step"  # ty:ignore[unresolved-attribute]
+    assert step_events[3].msg.step_name == "second_step"  # ty:ignore[unresolved-attribute]
 
 
 async def test_step_receives_task_result(worker, grctl_client) -> None:

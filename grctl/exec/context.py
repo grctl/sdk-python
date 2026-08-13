@@ -166,7 +166,6 @@ class Context:
         timeout: client-side wait in seconds, independent of the server-side workflow_timeout.
         """
         handle = await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
-        await handle.future.start()
         return await handle.result(timeout=timeout)
 
     def _callback_step_name(self, on_completed_step: StepHandler | None) -> str | None:

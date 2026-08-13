@@ -74,6 +74,48 @@ def _ctx_start_replay_worker(parent_wf_type: str, child_wf_type: str, pause_even
     asyncio.run(run())
 
 
+def _start_child_future_replay_worker(parent_wf_type: str, child_wf_type: str, pause_event=None) -> None:
+    """Worker for the ctx.start_child() + await handle.future replay test.
+
+    A parent that observes its child through the handle's future must still see the child
+    settle after its step is retried, even though the replayed handle is rebuilt from
+    history rather than from the attempt that started the child.
+    """
+
+    async def run() -> None:
+        _configure_fast_replay_redelivery()
+        nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
+
+        child_wf = Workflow(workflow_type=child_wf_type)
+        parent_wf = Workflow(workflow_type=parent_wf_type)
+
+        @child_wf.step(start=True)
+        async def child_start(ctx: Context) -> Directive:
+            return ctx.next.step(child_work)
+
+        @child_wf.step()
+        async def child_work(ctx: Context) -> Directive:
+            if pause_event is not None:
+                await asyncio.to_thread(pause_event.wait)
+            return ctx.next.complete("child-done")
+
+        @parent_wf.step(start=True)
+        async def parent_start(ctx: Context) -> Directive:
+            return ctx.next.step(parent_main)
+
+        @parent_wf.step()
+        async def parent_main(ctx: Context) -> Directive:
+            handle = await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
+            result = await handle.future
+            return ctx.next.complete(result)
+
+        conn = await Connection.connect(servers=[nats_url])
+        wk = Worker(workflows=[parent_wf, child_wf], connection=conn)
+        await wk.run()
+
+    asyncio.run(run())
+
+
 # ─── send_to_parent() skip scenario ───────────────────────────────────────────
 
 
@@ -443,6 +485,41 @@ async def test_run_child_skips_duplicate_start_on_step_retry(grctl_client: Clien
     )
     worker_b = multiprocessing.Process(
         target=_run_child_replay_worker, args=(parent_wf_type, child_wf_type), daemon=True
+    )
+    worker_a.start()
+    await asyncio.sleep(_WORKER_INIT_DELAY)
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(type=parent_wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
+
+    try:
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        await history.wait_for_kind(HistoryKind.child_started)
+        _terminate(worker_a)
+        worker_b.start()
+
+        result = await asyncio.wait_for(handle.future, timeout=60.0)
+        assert result == "child-done"
+
+        all_events = await history.direct_events()
+        child_started_events = [e for e in all_events if e.kind == HistoryKind.child_started]
+        assert len(child_started_events) == 1, "child must be started exactly once — no duplicate on step retry"
+    finally:
+        _terminate(worker_a)
+        _terminate(worker_b)
+
+
+async def test_start_child_future_still_settles_after_step_retry(grctl_client: Client) -> None:
+    """A handle rebuilt by replay must observe its child, not wait on a listener nobody attached."""
+    pause_event = multiprocessing.Event()
+    parent_wf_type = unique_workflow_type("spec_start_child_future_replay_parent")
+    child_wf_type = unique_workflow_type("spec_start_child_future_replay_child")
+
+    worker_a = multiprocessing.Process(
+        target=_start_child_future_replay_worker, args=(parent_wf_type, child_wf_type, pause_event), daemon=True
+    )
+    worker_b = multiprocessing.Process(
+        target=_start_child_future_replay_worker, args=(parent_wf_type, child_wf_type), daemon=True
     )
     worker_a.start()
     await asyncio.sleep(_WORKER_INIT_DELAY)

@@ -12,6 +12,7 @@ from grctl.models import (
     DirectiveKind,
     ErrorDetails,
     Fail,
+    FailStep,
     RunInfo,
     Step,
     StepPickedUp,
@@ -74,6 +75,14 @@ class DrcFactory:
     def fail(self, error: ErrorDetails) -> Directive:
         """Mark the workflow run failed with a structured error."""
         return self._next(DirectiveKind.fail, Fail(error=error))
+
+    def fail_step(self, step_name: str, error: ErrorDetails) -> Directive:
+        """Report that a step handler raised. The server records the step as failed and fails the run.
+
+        Distinct from `fail`, which is the handler deciding the run is over: that
+        outcome records the step as completed and the run as failed.
+        """
+        return self._next(DirectiveKind.fail_step, FailStep(step_name=step_name, error=error))
 
     def step_picked_up(self, step_name: str, timestamp: datetime) -> Directive:
         return Directive(

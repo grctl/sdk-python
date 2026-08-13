@@ -101,8 +101,13 @@ class Operation(Protocol):
         """
         ...
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> Any:
-        """Turn a (kind, payload) — recorded or replayed — into a value, or raise it."""
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> Any:
+        """Turn a (kind, payload) — recorded or replayed — into a value, or raise it.
+
+        Runs on both a fresh attempt and a replay, so an operation whose value is a live
+        object rather than a plain result builds it here — this is the only hook a
+        replaying step has, and the value it hands back must behave the same either way.
+        """
         ...
 
 
@@ -156,7 +161,7 @@ class Journal:
             kind, payload = await operation.perform(progress)
             await self.record(kind, payload, operation_id)
 
-        return operation.materialize(kind, payload)
+        return await operation.materialize(kind, payload)
 
     async def next(self, acceptable_kinds: frozenset[HistoryKind], operation_id: str) -> asyncio.Future[Outcome] | None:
 

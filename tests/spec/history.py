@@ -2,11 +2,13 @@
 
 import asyncio
 import time
+from typing import cast
 
 from nats.js.errors import NotFoundError
 
 from grctl.client import Client
 from grctl.models import HistoryEvent, HistoryKind, history_decoder
+from grctl.nats.connection import Connection as NatsConnection
 from grctl.nats.manifest import manifest
 
 _POLL_INTERVAL = 0.1
@@ -66,7 +68,7 @@ class HistoryAccess:
 
     async def direct_events(self) -> list[HistoryEvent]:
         """Return history events without creating a pull consumer."""
-        connection = self._client._connection
+        connection = cast("NatsConnection", self._client._connection)
         subject = manifest.history_subject(wf_id=self._wf_id, run_id=self._run_id)
         stream = manifest.history_stream_name()
         manager = connection.js._jsm
@@ -78,14 +80,16 @@ class HistoryAccess:
 
         events: list[HistoryEvent] = []
         next_seq = 1
-        while next_seq <= last.seq:  # ty:ignore[unsupported-operator]
+        while last.seq is not None and next_seq <= last.seq:
             try:
                 raw_msg = await manager.get_msg(stream, seq=next_seq, subject=subject, next=True, direct=True)
             except NotFoundError:
                 break
             if raw_msg.data:
                 events.append(history_decoder(raw_msg.data))
-            next_seq = raw_msg.seq + 1  # ty:ignore[unsupported-operator]
+            if raw_msg.seq is None:
+                break
+            next_seq = raw_msg.seq + 1
 
         return events
 

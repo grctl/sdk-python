@@ -55,7 +55,7 @@ def _return_type(fn: Callable[..., Awaitable[Any]]) -> Any:
     try:
         return get_type_hints(
             annotation_holder,
-            globalns=fn.__globals__,
+            globalns=fn.__globals__,  # ty:ignore[unresolved-attribute]
             localns=inspect.getclosurevars(fn).nonlocals,
         )["return"]
     except NameError:
@@ -311,7 +311,7 @@ class Task:
         )
         return self._terminal_outcome(progress.operation_id, outcome, _elapsed_ms(started_at))
 
-    def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> Any:
+    async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> Any:
         if kind == HistoryKind.task_cancelled:
             raise asyncio.CancelledError
 

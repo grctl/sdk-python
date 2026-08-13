@@ -122,8 +122,9 @@ class Execution:
         except Exception as e:
             stack_trace = traceback.format_exc()
             self.logger.exception(f"Workflow execution failed for {self.step_name}")
-            outcome_directive = self.step_directive_factory.fail(
-                ErrorDetails(type=type(e).__name__, message=str(e), stack_trace=stack_trace)
+            outcome_directive = self.step_directive_factory.fail_step(
+                self.step_name,
+                ErrorDetails(type=type(e).__name__, message=str(e), stack_trace=stack_trace),
             )
         finally:
             if context_token is not None:
