@@ -1,7 +1,6 @@
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from logging import Logger
 from typing import Any, Protocol, TypeVar, overload
 
 from grctl.exec.child_tracker import ChildTracker
@@ -12,8 +11,7 @@ from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, 
 from grctl.exec.task import Task
 from grctl.models import Directive, ErrorDetails, RunInfo
 from grctl.models.directive import RetryPolicy
-from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle, WorkflowHandleFactory
 
 StepHandler = Callable[..., Awaitable[Directive]]
 T = TypeVar("T")
@@ -55,8 +53,7 @@ class Context:
         drc_factory: DrcFactory,
         store: Store,
         workflow_api: WorkflowAPI,
-        listener_factory: HistoryListenerFactory,
-        logger: Logger,
+        handle_factory: WorkflowHandleFactory,
         childs: ChildTracker,
         codec: Codec,
         parent_run: RunInfo | None = None,
@@ -68,8 +65,7 @@ class Context:
         self._drc_factory = drc_factory
         self._store = store
         self._workflow_api = workflow_api
-        self._listener_factory = listener_factory
-        self._logger = logger
+        self._handle_factory = handle_factory
         self._childs = childs
         self._codec = codec
         self._parent_run = parent_run
@@ -145,11 +141,8 @@ class Context:
         """
         operation = StartChild(
             self._run_info,
-            self._worker_id,
-            self._workflow_api,
             self._codec,
-            self._listener_factory,
-            self._logger,
+            self._handle_factory,
             self._childs,
             workflow_type,
             workflow_id,

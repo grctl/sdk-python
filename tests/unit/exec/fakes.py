@@ -21,6 +21,7 @@ from grctl.exec.manager import Codec
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
 from grctl.nats.codec import MsgspecCodec
+from grctl.workflow.handle import WorkflowHandleFactory
 from grctl.workflow.workflow import StepInfo
 
 DEFAULT_RUN_INFO = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
@@ -136,6 +137,15 @@ def make_context(  # noqa: PLR0913
     )
     context_codec = codec if codec is not None else MsgspecCodec()
     kvman = store if store is not None else KVManager(FakeKVApi(), context_codec)
+    context_workflow_api = workflow_api if workflow_api is not None else FakeWorkflowAPI()
+    context_listener_factory = listener_factory if listener_factory is not None else FakeHistoryListenerFactory()
+    handle_factory = WorkflowHandleFactory(
+        workflow_api=context_workflow_api,
+        listener_factory=context_listener_factory,
+        sender_id=worker_id,
+        logger=logging.getLogger("tests.exec"),
+        decoder=context_codec,
+    )
     return Context(
         journal,
         run_info,
@@ -143,9 +153,8 @@ def make_context(  # noqa: PLR0913
         "current_step",
         drc_factory,
         kvman,
-        workflow_api=workflow_api if workflow_api is not None else FakeWorkflowAPI(),
-        listener_factory=listener_factory if listener_factory is not None else FakeHistoryListenerFactory(),
-        logger=logging.getLogger("tests.exec"),
+        workflow_api=context_workflow_api,
+        handle_factory=handle_factory,
         childs=childs if childs is not None else ChildTracker(),
         codec=context_codec,
         parent_run=parent_run,

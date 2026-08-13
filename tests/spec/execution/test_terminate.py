@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 import ulid
 
-from grctl.models import HistoryKind
+from grctl.models import HistoryKind, StepCompleted, StepFailed, StepStarted
 from tests.spec.history import HistoryAccess
 from tests.spec.workflows import make_blocking_step_workflow
 
@@ -21,7 +21,9 @@ async def test_terminate_while_step_in_flight(worker, grctl_client) -> None:
         timeout=timedelta(seconds=30),
     )
     history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=10.0)
-    await history.wait_for_step([HistoryKind.step_started, HistoryKind.step_completed, HistoryKind.step_started])
+    # GC-296: step.started events are not causally ordered by the server.
+    # The named pickup is the actual precondition for termination.
+    await history.wait_for_step_started("blocking_step")
 
     await handle.terminate(reason="test termination")
 
@@ -41,19 +43,19 @@ async def test_terminated_step_emits_no_step_completed(worker, grctl_client) -> 
         timeout=timedelta(seconds=30),
     )
     history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=10.0)
-    await history.wait_for_step([HistoryKind.step_started, HistoryKind.step_completed, HistoryKind.step_started])
+    await history.wait_for_step_started("blocking_step")
 
     await handle.terminate(reason="test termination")
 
     await history.wait_for_kind(HistoryKind.run_terminated)
 
     events = await history.events()
-    step_kinds = [
+    blocking_step_kinds = [
         e.kind
         for e in events
-        if e.kind in (HistoryKind.step_started, HistoryKind.step_completed, HistoryKind.step_failed)
+        if isinstance(e.msg, (StepStarted, StepCompleted, StepFailed)) and e.msg.step_name == "blocking_step"
     ]
-    assert step_kinds == [HistoryKind.step_started, HistoryKind.step_completed, HistoryKind.step_started]
+    assert blocking_step_kinds == [HistoryKind.step_started]
     await handle.future.discard()
 
 
@@ -69,7 +71,7 @@ async def test_terminate_future_raises(worker, grctl_client) -> None:
         timeout=timedelta(seconds=30),
     )
     history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=10.0)
-    await history.wait_for_step([HistoryKind.step_started, HistoryKind.step_completed, HistoryKind.step_started])
+    await history.wait_for_step_started("blocking_step")
 
     await handle.terminate(reason="test termination")
 

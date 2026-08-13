@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 from typing import Any
 
@@ -13,6 +14,9 @@ from grctl.workflow import Directive, Workflow
 from tests.spec.workflows import unique_workflow_type
 
 _WORKFLOW_TIMEOUT = timedelta(seconds=60)
+# Temporary workaround for GC-295. Remove after the server fixes the lost wakeup
+# when a child sends an event while its parent enters Wait.
+_SEND_TO_PARENT_DELAY_SECONDS = 1.0
 
 
 class StructPayload(msgspec.Struct):
@@ -106,6 +110,7 @@ async def test_send_to_parent_preserves_registered_payload(worker, grctl_client:
 
     @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
+        await asyncio.sleep(_SEND_TO_PARENT_DELAY_SECONDS)
         await ctx.send_to_parent("result", payload=payload)
         return ctx.next.complete("child-done")
 
@@ -337,6 +342,7 @@ async def test_send_to_parent_preserves_primitive_payload(worker, grctl_client: 
 
     @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
+        await asyncio.sleep(_SEND_TO_PARENT_DELAY_SECONDS)
         await ctx.send_to_parent("result", payload=expected_payload)
         return ctx.next.complete("child-done")
 
@@ -373,6 +379,7 @@ async def test_send_to_parent_preserves_struct_payload(worker, grctl_client: Cli
 
     @child_wf.step(start=True)
     async def child_start(ctx: Context) -> Directive:
+        await asyncio.sleep(_SEND_TO_PARENT_DELAY_SECONDS)
         await ctx.send_to_parent("result", payload=struct)
         return ctx.next.complete("child-done")
 

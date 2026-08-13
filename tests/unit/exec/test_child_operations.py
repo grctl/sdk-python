@@ -8,6 +8,7 @@ from grctl.exec.context import Context
 from grctl.exec.operations import StartChild
 from grctl.models import ChildWorkflowStarted, HistoryEvent, HistoryKind, RunInfo
 from grctl.nats.codec import MsgspecCodec
+from grctl.workflow.handle import WorkflowHandleFactory
 from tests.unit.exec.fakes import (
     FakeAppender,
     FakeHistoryListenerFactory,
@@ -47,13 +48,17 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
     run_info = RunInfo(id="run-1", wf_id="wf-1", wf_type="test-workflow")
     workflow_api = FakeWorkflowAPI()
     listener_factory = FakeHistoryListenerFactory()
+    codec = MsgspecCodec()
     op = StartChild(
         run_info,
-        "worker-1",
-        workflow_api,
-        MsgspecCodec(),
-        listener_factory,
-        logging.getLogger("tests.exec"),
+        codec,
+        WorkflowHandleFactory(
+            workflow_api=workflow_api,
+            listener_factory=listener_factory,
+            sender_id="worker-1",
+            logger=logging.getLogger("tests.exec"),
+            decoder=codec,
+        ),
         ChildTracker(),
         "child-workflow",
         "child-1",

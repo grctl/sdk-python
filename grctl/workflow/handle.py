@@ -90,3 +90,38 @@ class WorkflowHandle:
 
     async def update(self, update_name: str, data: Any) -> Any:
         raise NotImplementedError("update() not yet implemented")
+
+
+class WorkflowHandleFactory:
+    """Creates workflow handles for one SDK participant."""
+
+    def __init__(
+        self,
+        workflow_api: WorkflowAPI,
+        listener_factory: HistoryListenerFactory,
+        sender_id: str,
+        logger: Logger,
+        decoder: ResultDecoder | None = None,
+    ) -> None:
+        self._workflow_api = workflow_api
+        self._listener_factory = listener_factory
+        self._sender_id = sender_id
+        self._logger = logger
+        self._decoder = decoder
+
+    def create(
+        self,
+        run_info: RunInfo,
+        payload: Any | None = None,
+        return_type: type | None = None,
+    ) -> WorkflowHandle:
+        return WorkflowHandle(
+            run_info=run_info,
+            payload=payload,
+            workflow_api=self._workflow_api,
+            listener_factory=self._listener_factory,
+            sender_id=self._sender_id,
+            logger=self._logger,
+            return_type=return_type,
+            decoder=self._decoder,
+        )

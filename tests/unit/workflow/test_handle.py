@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from grctl.workflow.handle import WorkflowHandle
+from grctl.workflow.handle import WorkflowHandle, WorkflowHandleFactory
 from tests.unit.workflow.fakes import DEFAULT_RUN_INFO, LOGGER, CapturingListenerFactory, FakeWorkflowAPI
 
 
@@ -18,6 +18,28 @@ def make_handle(payload: object | None = None) -> tuple[WorkflowHandle, FakeWork
         logger=LOGGER,
     )
     return handle, workflow_api, listener_factory
+
+
+async def test_factory_binds_participant_dependencies_to_each_handle() -> None:
+    workflow_api = FakeWorkflowAPI()
+    listener_factory = CapturingListenerFactory()
+    factory = WorkflowHandleFactory(
+        workflow_api=workflow_api,
+        listener_factory=listener_factory,
+        sender_id="worker-1",
+        logger=LOGGER,
+    )
+
+    handle = factory.create(DEFAULT_RUN_INFO, payload={"x": 1}, return_type=str)
+
+    assert handle.run_info == DEFAULT_RUN_INFO
+    assert handle.future.payload == {"x": 1}
+    assert listener_factory.run_info == DEFAULT_RUN_INFO
+
+    await handle.request_start()
+
+    assert workflow_api.calls[0].sender_id == "worker-1"
+    assert workflow_api.calls[0].kwargs["input"] == {"x": 1}
 
 
 async def test_request_start_sends_a_start_command_without_listening() -> None:

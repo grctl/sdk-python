@@ -13,7 +13,7 @@ from grctl.models.errors import WorkflowStepAlreadyExecutedError
 from grctl.models.worker import WorkerInfo
 from grctl.workflow import StepInfo, Workflow
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandleFactory
 
 logger = get_logger(__name__)
 
@@ -97,6 +97,13 @@ class ExecutionManager:
         self.registry = registry
         self.worker_info = worker_info
         self.connection = connection
+        self.handle_factory = WorkflowHandleFactory(
+            workflow_api=connection.workflow_api,
+            listener_factory=connection.listener_factory,
+            sender_id=worker_info.id,
+            logger=logger,
+            decoder=connection.codec,
+        )
         self.executions: dict[str, asyncio.Task] = {}
 
     def is_running(self, run_id: str) -> bool:
@@ -184,7 +191,7 @@ class ExecutionManager:
             directive_api=self.connection.build_directive_api(run_info),
             codec=self.connection.codec,
             workflow_api=self.connection.workflow_api,
-            listener_factory=self.connection.listener_factory,
+            handle_factory=self.handle_factory,
             step_history=await self.load_step_history(directive),
             step_infos=step_infos,
         )

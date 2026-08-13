@@ -1,7 +1,6 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
-from logging import Logger
 from random import random as _random
 from typing import Any
 
@@ -21,8 +20,7 @@ from grctl.models import (
     UuidRecorded,
 )
 from grctl.models.history import HistoryEvents
-from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle, WorkflowHandleFactory
 
 
 class Now:
@@ -138,11 +136,8 @@ class StartChild:
     def __init__(  # noqa: PLR0913
         self,
         run_info: RunInfo,
-        worker_id: str,
-        workflow_api: WorkflowAPI,
         codec: Codec,
-        listener_factory: HistoryListenerFactory,
-        logger: Logger,
+        handle_factory: WorkflowHandleFactory,
         childs: ChildTracker,
         workflow_type: str,
         workflow_id: str,
@@ -151,11 +146,8 @@ class StartChild:
         callback_step_name: str | None = None,
     ) -> None:
         self._run_info = run_info
-        self._worker_id = worker_id
-        self._workflow_api = workflow_api
         self._codec = codec
-        self._listener_factory = listener_factory
-        self._logger = logger
+        self._handle_factory = handle_factory
         self._childs = childs
         self._workflow_type = workflow_type
         self._workflow_id = workflow_id
@@ -215,13 +207,9 @@ class StartChild:
             parent_callback_step=self._callback_step_name,
             created_at=datetime.now(UTC),
         )
-        return WorkflowHandle(
+        return self._handle_factory.create(
             run_info=child_run_info,
             payload=workflow_input,
-            workflow_api=self._workflow_api,
-            listener_factory=self._listener_factory,
-            sender_id=self._worker_id,
-            logger=self._logger,
         )
 
 

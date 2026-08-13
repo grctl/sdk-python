@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 
 import ulid
@@ -8,6 +9,9 @@ from grctl.workflow import Directive, Workflow
 from tests.spec.workflows import unique_workflow_type
 
 _WORKFLOW_TIMEOUT = timedelta(seconds=60)
+# Temporary workaround for GC-295. Remove after the server fixes the lost wakeup
+# when a child sends an event while its parent enters Wait.
+_SEND_TO_PARENT_DELAY_SECONDS = 1.0
 
 
 async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_client: Client) -> None:
@@ -23,6 +27,7 @@ async def test_child_sends_result_to_parent_via_send_to_parent(worker, grctl_cli
 
     @child_wf.step()
     async def child_send(ctx: Context) -> Directive:
+        await asyncio.sleep(_SEND_TO_PARENT_DELAY_SECONDS)
         await ctx.send_to_parent("result_ready", payload="child-result")
         return ctx.next.complete("child-done")
 

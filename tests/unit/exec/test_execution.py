@@ -8,6 +8,7 @@ from grctl.exec.kv_manager import KVManager
 from grctl.models import Directive, DirectiveKind, FailStep, Step, StepResult
 from grctl.models.handler import HandlerConfig, HandlerSpec
 from grctl.models.worker import WorkerInfo
+from grctl.workflow.handle import WorkflowHandleFactory
 from grctl.workflow.workflow import StepInfo
 from tests.unit.exec.fakes import (
     DEFAULT_RUN_INFO,
@@ -58,6 +59,8 @@ async def test_invalid_handler_payload_sends_a_failed_step_result() -> None:
         msg=Step(step_name="current_step", payload="not-an-int"),
     )
     worker = WorkerInfo(id=DEFAULT_WORKER_ID, name="test-worker")
+    workflow_api = FakeWorkflowAPI()
+    listener_factory = FakeHistoryListenerFactory()
     execution = Execution(
         worker,
         directive,
@@ -67,8 +70,14 @@ async def test_invalid_handler_payload_sends_a_failed_step_result() -> None:
             history_appender=FakeAppender(),
             directive_api=recorder,
             codec=codec,
-            workflow_api=FakeWorkflowAPI(),
-            listener_factory=FakeHistoryListenerFactory(),
+            workflow_api=workflow_api,
+            handle_factory=WorkflowHandleFactory(
+                workflow_api=workflow_api,
+                listener_factory=listener_factory,
+                sender_id=DEFAULT_WORKER_ID,
+                logger=logging.getLogger("tests.exec"),
+                decoder=codec,
+            ),
             step_history=[],
             step_infos={"current_step": StepInfo(timeout_ms=0)},
         ),

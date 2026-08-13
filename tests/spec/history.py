@@ -7,7 +7,7 @@ from typing import cast
 from nats.js.errors import NotFoundError
 
 from grctl.client import Client
-from grctl.models import HistoryEvent, HistoryKind, history_decoder
+from grctl.models import HistoryEvent, HistoryKind, StepStarted, history_decoder
 from grctl.nats.connection import Connection as NatsConnection
 from grctl.nats.manifest import manifest
 
@@ -111,6 +111,18 @@ class HistoryAccess:
     async def wait_for_step(self, expected_kinds: list[HistoryKind]) -> list[HistoryEvent]:
         """Poll until step events match the expected sequence, then return them."""
         return await self._wait_for_filtered(expected_kinds, _STEP_KINDS, "step")
+
+    async def wait_for_step_started(self, step_name: str) -> HistoryEvent:
+        """Poll until the named step has been picked up by a worker."""
+        deadline = time.monotonic() + self._timeout
+        while time.monotonic() < deadline:
+            for event in await self.direct_events():
+                if isinstance(event.msg, StepStarted) and event.msg.step_name == step_name:
+                    return event
+            await asyncio.sleep(_POLL_INTERVAL)
+        raise AssertionError(
+            f"Timed out waiting for step {step_name!r} to start — wf_id={self._wf_id} run_id={self._run_id}"
+        )
 
     async def wait_for_task(self, expected_kinds: list[HistoryKind]) -> list[HistoryEvent]:
         """Poll until task events match the expected sequence, then return them."""

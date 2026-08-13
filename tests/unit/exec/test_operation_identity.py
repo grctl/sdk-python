@@ -18,6 +18,7 @@ from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, 
 from grctl.models import RunInfo
 from grctl.nats.codec import MsgspecCodec
 from grctl.serde import SerializerRegistry
+from grctl.workflow.handle import WorkflowHandleFactory
 from tests.unit.exec.fakes import (
     DEFAULT_RUN_INFO,
     DEFAULT_WORKER_ID,
@@ -33,13 +34,18 @@ _PARENT_RUN = RunInfo(id="parent-run", wf_id="parent-wf", wf_type="parent-type")
 def _start_child(
     workflow_id: str = "child-1", workflow_input: dict | None = None, codec: MsgspecCodec | None = None
 ) -> StartChild:
+    workflow_api = FakeWorkflowAPI()
+    child_codec = codec if codec is not None else MsgspecCodec()
     return StartChild(
         DEFAULT_RUN_INFO,
-        DEFAULT_WORKER_ID,
-        FakeWorkflowAPI(),
-        codec if codec is not None else MsgspecCodec(),
-        FakeHistoryListenerFactory(),
-        logging.getLogger("tests.exec"),
+        child_codec,
+        WorkflowHandleFactory(
+            workflow_api=workflow_api,
+            listener_factory=FakeHistoryListenerFactory(),
+            sender_id=DEFAULT_WORKER_ID,
+            logger=logging.getLogger("tests.exec"),
+            decoder=child_codec,
+        ),
         ChildTracker(),
         "child-workflow",
         workflow_id,

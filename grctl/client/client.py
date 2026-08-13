@@ -14,7 +14,7 @@ from ulid import ULID
 from grctl.exec.codec import Codec
 from grctl.models import HistoryEvent, RunInfo
 from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI, WorkflowHandle
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandle, WorkflowHandleFactory
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,13 @@ class Client:
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
         self.id = f"c_{secrets.token_hex(4)}@{socket.gethostname()}"
+        self._handle_factory = WorkflowHandleFactory(
+            workflow_api=connection.workflow_api,
+            listener_factory=connection.listener_factory,
+            sender_id=self.id,
+            logger=logger,
+            decoder=connection.codec,
+        )
 
     async def describe(self, wf_id: str) -> RunInfo:
         """Describe the latest run for a workflow ID."""
@@ -112,14 +119,9 @@ class Client:
         """Get a handle for an already-running workflow."""
         run_info = await self.describe(wfid)
 
-        handle = WorkflowHandle(
+        handle = self._handle_factory.create(
             run_info=run_info,
             payload=None,
-            workflow_api=self._connection.workflow_api,
-            listener_factory=self._connection.listener_factory,
-            sender_id=self.id,
-            logger=logger,
-            decoder=self._connection.codec,
         )
         await handle.attach()
         return handle
@@ -151,15 +153,10 @@ class Client:
             created_at=datetime.now(UTC),
         )
 
-        handle = WorkflowHandle(
+        handle = self._handle_factory.create(
             run_info=run_info,
             payload=input,
-            workflow_api=self._connection.workflow_api,
-            listener_factory=self._connection.listener_factory,
-            sender_id=self.id,
-            logger=logger,
             return_type=return_type,
-            decoder=self._connection.codec,
         )
 
         # Attached before the start command goes out so the caller observes the run from

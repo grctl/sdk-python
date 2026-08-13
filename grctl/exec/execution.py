@@ -18,8 +18,7 @@ from grctl.models import Directive, ErrorDetails, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
 from grctl.models.worker import WorkerInfo
-from grctl.workflow.future import HistoryListenerFactory
-from grctl.workflow.handle import WorkflowAPI
+from grctl.workflow.handle import WorkflowAPI, WorkflowHandleFactory
 from grctl.workflow.workflow import StepInfo
 
 
@@ -38,7 +37,7 @@ class ExecutionDeps:
     directive_api: DirectiveAPI
     codec: Codec
     workflow_api: WorkflowAPI
-    listener_factory: HistoryListenerFactory
+    handle_factory: WorkflowHandleFactory
     step_history: list[HistoryEvent]
     step_infos: Mapping[str, StepInfo]
 
@@ -88,8 +87,7 @@ class Execution:
             self.step_directive_factory,
             self.kvman,
             deps.workflow_api,
-            deps.listener_factory,
-            logger,
+            deps.handle_factory,
             self.childs,
             deps.codec,
             self.parent_run,
