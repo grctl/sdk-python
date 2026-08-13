@@ -124,9 +124,15 @@ class Sleep:
 class StartChild:
     """Starts a child workflow, recording its run id so replay reconstructs the same handle.
 
-    perform() only runs on live execution — it builds the handle and publishes the start
-    command. On replay, materialize() rebuilds an equivalent handle from the recorded run id
-    without re-publishing anything.
+    perform() runs on live execution only and does the one thing that must not happen
+    twice: publish the start command. Subscribing to the child's history belongs to
+    materialize(), which runs on both paths, so the handle is attached exactly once
+    whether this attempt started the child or inherited it from an earlier one.
+
+    Attaching after the child was asked to start means the child may already have
+    finished by the time the listener joins. It is still observed: the listener delivers
+    the run's most recent event on join, and a run's outcome is always its most recent
+    event.
     """
 
     def __init__(  # noqa: PLR0913
@@ -181,7 +187,7 @@ class StartChild:
     async def perform(self, _progress: OperationProgress) -> Outcome:
         run_id = str(ULID())
         self._handle = self._build_handle(run_id, self._workflow_input)
-        await self._handle.start()
+        await self._handle.request_start()
         return HistoryKind.child_started, ChildWorkflowStarted(
             run_id=run_id, wf_type=self._workflow_type, wf_id=self._workflow_id, input=self._workflow_input
         )
@@ -189,12 +195,10 @@ class StartChild:
     async def materialize(self, kind: HistoryKind, payload: HistoryEvents) -> WorkflowHandle:  # noqa: ARG002
         if not isinstance(payload, ChildWorkflowStarted):
             raise TypeError(f"Expected ChildWorkflowStarted payload, got {type(payload)}")
+        # Set only when this attempt performed the call; on replay the child was started by
+        # an earlier attempt and the handle onto it has to be rebuilt from the recorded run id.
         if self._handle is None:
             self._handle = self._build_handle(payload.run_id, payload.input)
-        # A replayed handle has no listener behind it, so subscribing here is what lets a
-        # retried step observe a child started by an earlier attempt. On a fresh attempt
-        # perform() already subscribed — before publishing the start command, so no event is
-        # missed — and attaching again is a no-op.
         await self._handle.attach()
         self._childs.add(self._handle)
         return self._handle

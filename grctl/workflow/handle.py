@@ -44,27 +44,25 @@ class WorkflowHandle:
         )
 
     async def attach(self) -> None:
-        """Attach to an existing workflow run by starting the future subscription only."""
-        self._logger.debug("Attaching to existing workflow %s", self.run_info.wf_id)
-        await self.future.start()
+        """Begin observing the run's history, so this handle can settle on its outcome.
 
-    async def start(self) -> None:
-        """Start the workflow future (subscribe to events and publish run command).
-
-        The listener is subscribed before the command is published so no event
-        is missed; if the server rejects the start, it is torn down again rather
-        than left listening to a run that will never exist.
+        Called exactly once per handle. A handle may attach at any point in a run's
+        life, including after it has already finished — the listener delivers the run's
+        most recent event on join, and a run's outcome is always its most recent event.
         """
-        self._logger.debug("Starting workflow history listener")
+        self._logger.debug("Attaching to workflow %s", self.run_info.wf_id)
         await self.future.start()
+
+    async def detach(self) -> None:
+        """Stop observing the run, abandoning this handle's view of it."""
+        await self.future.stop()
+
+    async def request_start(self) -> None:
+        """Ask the server to start this run. Attaching is the caller's separate decision."""
         self._logger.debug(
             "Publishing start command for wf_type=%s wf_id=%s", self.run_info.wf_type, self.run_info.wf_id
         )
-        try:
-            await self._workflow_api.start_run(self.run_info, self._payload, self._sender_id)
-        except Exception:
-            await self.future.stop()
-            raise
+        await self._workflow_api.start_run(self.run_info, self._payload, self._sender_id)
 
     async def send(self, event_name: str, payload: Any | None = None) -> None:
         self._logger.debug("Sending event '%s' to workflow %s", event_name, self.run_info.wf_id)

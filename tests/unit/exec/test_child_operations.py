@@ -88,3 +88,21 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
     assert workflow_api.calls == []
     assert replay_appender.events == []
     assert childs.started == [handle]
+    assert [listener.start_calls for listener in listener_factory.listeners] == [1]
+
+
+async def test_start_child_creates_and_starts_exactly_one_listener_per_child() -> None:
+    """One child, one listener, started once — on a fresh attempt as much as on replay.
+
+    A child is subscribed from a path that runs on both, so a live attempt that also
+    subscribed where it published would leave the handle listening twice: every event
+    delivered twice, and a subscription with nothing left holding it to close it.
+    """
+    listener_factory = FakeHistoryListenerFactory()
+    childs = ChildTracker()
+    ctx = make_context(listener_factory=listener_factory, childs=childs)
+
+    handle = await ctx.start_child("child-workflow", "child-1", {"x": 1})
+
+    assert childs.started == [handle]
+    assert [listener.start_calls for listener in listener_factory.listeners] == [1]

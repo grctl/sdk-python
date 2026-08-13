@@ -20,8 +20,16 @@ from grctl.models.errors import WorkflowError
 class HistoryListener(Protocol):
     """Delivers a run's history events to a handler until stopped.
 
-    start() and stop() must be idempotent — safe to call more than once — since
-    WorkflowFuture may be started or stopped from more than one call site.
+    A listener belongs to the one future that created it and is started exactly once.
+    Any number of listeners may observe the same run — two clients watching one workflow
+    each get their own — so a listener never coordinates with, or is shared by, another.
+
+    stop() is idempotent and terminal: a future reaches it from its done callback and
+    from an explicit stop, and never resumes afterwards.
+
+    On start the listener delivers the run's most recent history event and everything
+    after it, which is what lets a future attach to a run that has already finished and
+    still settle on its outcome.
     """
 
     async def start(self) -> None: ...

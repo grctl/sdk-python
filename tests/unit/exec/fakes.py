@@ -67,20 +67,33 @@ class FakeWorkflowAPI:
 
 
 class FakeHistoryListener:
-    """No-op stand-in for a HistoryListener: nothing actually delivers events in tests."""
+    """Stand-in for a HistoryListener: nothing delivers events, but lifecycle is recorded.
+
+    Counts rather than asserts, so a test can state how many listeners a call created and
+    how often each ran — the real subscriber refuses a second start outright.
+    """
+
+    def __init__(self) -> None:
+        self.start_calls = 0
+        self.stop_calls = 0
 
     async def start(self) -> None:
-        return None
+        self.start_calls += 1
 
     async def stop(self) -> None:
-        return None
+        self.stop_calls += 1
 
 
 class FakeHistoryListenerFactory:
-    """Stands in for a HistoryListenerFactory, handing out no-op listeners."""
+    """Stands in for a HistoryListenerFactory, keeping every listener it handed out."""
+
+    def __init__(self) -> None:
+        self.listeners: list[FakeHistoryListener] = []
 
     def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> FakeHistoryListener:
-        return FakeHistoryListener()
+        listener = FakeHistoryListener()
+        self.listeners.append(listener)
+        return listener
 
 
 class FakeKVApi:

@@ -16,7 +16,18 @@ logger = get_logger(__name__)
 
 
 class HistorySubscriber:
-    """Manages JetStream subscription for workflow history events."""
+    """Delivers one run's history events to a handler, for as long as someone is watching.
+
+    The subscription is ephemeral and outside any queue group, so every subscriber on a
+    run receives that run's full event stream. A durable name or a queue group here would
+    instead split one run's history between two watchers, each seeing half of it.
+
+    DeliverPolicy.LAST is what makes join order irrelevant: a subscriber gets the newest
+    event on the run's subject and everything after, and a run's outcome is always its
+    newest event. So a watcher that arrives after the run finished still sees it finish.
+    Earlier non-terminal events are not redelivered — anything that comes to depend on
+    seeing those needs DeliverPolicy.ALL and a way to ignore what it has already seen.
+    """
 
     def __init__(
         self,
@@ -31,10 +42,17 @@ class HistorySubscriber:
         self._history_stream = manifest.history_stream_name()
         self._handler = handler
         self._subscription: Subscription | None = None
+        # Whether this listener has ever run, as distinct from whether it is running now:
+        # stopping is terminal, so the two answers differ and only one of them gates start().
+        self._started = False
 
     async def start(self) -> None:
-        if self._subscription is not None:
-            return
+        # Loud rather than tolerated: a second start means a caller lost track of which
+        # listener is live, and the quiet outcomes are a duplicated event stream, or a
+        # subscription revived after its owner settled with nothing left to close it.
+        if self._started:
+            raise RuntimeError(f"History listener for {self._history_subject} was already started")
+        self._started = True
 
         self._subscription = await self._js.subscribe(
             self._history_subject,

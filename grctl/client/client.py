@@ -162,6 +162,14 @@ class Client:
             decoder=self._connection.codec,
         )
 
-        # Start the workflow future (subscribe to events and publish run command)
-        await handle.start()
+        # Attached before the start command goes out so the caller observes the run from
+        # its first event; if the server rejects the start, the handle is not left
+        # listening to a run that will never exist.
+        await handle.attach()
+        try:
+            await handle.request_start()
+        except Exception:
+            await handle.detach()
+            raise
+
         return handle

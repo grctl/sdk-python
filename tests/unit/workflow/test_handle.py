@@ -20,12 +20,17 @@ def make_handle(payload: object | None = None) -> tuple[WorkflowHandle, FakeWork
     return handle, workflow_api, listener_factory
 
 
-async def test_start_starts_the_future_and_sends_a_start_command() -> None:
+async def test_request_start_sends_a_start_command_without_listening() -> None:
+    """Asking the server to start a run is separate from observing it.
+
+    A step that starts a child publishes the command as its recorded side effect and
+    attaches on a separate path that also runs on replay, so the two cannot be one call.
+    """
     handle, workflow_api, listener_factory = make_handle(payload={"x": 1})
 
-    await handle.start()
+    await handle.request_start()
 
-    assert listener_factory.listener.start_calls == 1
+    assert listener_factory.listener.start_calls == 0
     assert len(workflow_api.calls) == 1
     call = workflow_api.calls[0]
     assert call.op == "start_run"
@@ -34,13 +39,22 @@ async def test_start_starts_the_future_and_sends_a_start_command() -> None:
     assert call.sender_id == "worker-1"
 
 
-async def test_attach_starts_the_future_without_sending_a_command() -> None:
+async def test_attach_starts_the_listener_without_sending_a_command() -> None:
     handle, workflow_api, listener_factory = make_handle()
 
     await handle.attach()
 
     assert listener_factory.listener.start_calls == 1
     assert workflow_api.calls == []
+
+
+async def test_detach_stops_the_listener() -> None:
+    handle, _, listener_factory = make_handle()
+    await handle.attach()
+
+    await handle.detach()
+
+    assert listener_factory.listener.stop_calls == 1
 
 
 async def test_send_publishes_an_event_command() -> None:
