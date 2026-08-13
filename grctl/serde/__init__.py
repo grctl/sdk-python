@@ -1,4 +1,4 @@
-"""Serialisation of user-defined types to and from durable workflow history.
+"""Conversion of user-defined types to and from msgpack-native primitives.
 
 Users register serialisers for their own types with `@serializer(MyType)`. The
 transport layer converts the resulting primitives to bytes; it knows nothing
@@ -14,30 +14,23 @@ from grctl.serde.api import (
     serializer,
 )
 from grctl.serde.errors import (
-    MalformedEnvelopeError,
     NativeTypeError,
     SerdeError,
     SerializerConflictError,
-    TagMismatchError,
     UnsupportedTypeError,
-    VersionMismatchError,
 )
 from grctl.serde.fingerprint import fingerprint
 from grctl.serde.registry import SerializerRegistry
-from grctl.serde.serializer import MigratingSerializer, Serializer, TypeSerializer
+from grctl.serde.serializer import Serializer, TypeSerializer
 
 __all__ = [
-    "MalformedEnvelopeError",
-    "MigratingSerializer",
     "NativeTypeError",
     "SerdeError",
     "Serializer",
     "SerializerConflictError",
     "SerializerRegistry",
-    "TagMismatchError",
     "TypeSerializer",
     "UnsupportedTypeError",
-    "VersionMismatchError",
     "decode",
     "default_registry",
     "encode",

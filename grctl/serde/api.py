@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from grctl.serde.registry import DecodeFn, EncodeFn, SerializerRegistry
-from grctl.serde.serializer import Serializer, TagFor, TypeMatcher, default_tag, is_serializer
+from grctl.serde.serializer import Serializer, TypeMatcher, is_serializer
 
 _default_registry = SerializerRegistry()
 
@@ -17,8 +17,6 @@ def default_registry() -> SerializerRegistry:
 def serializer[T](
     tp: type[T],
     *,
-    tag: str | None = None,
-    version: int = 1,
     registry: SerializerRegistry | None = None,
     override: bool = False,
 ) -> Callable[[type], type]:
@@ -38,10 +36,6 @@ def serializer[T](
 
     Args:
         tp: The type this serialiser handles. Matching is exact, not by subclass.
-        tag: Wire tag written into durable history. Defaults to the type's name;
-            set it explicitly to keep history readable across a class rename.
-        version: Encoding version. Raise it when the encoded shape changes, and
-            implement `migrate(raw, from_version)` to upgrade older values.
         registry: Registry to register into. Defaults to the process-wide one.
         override: Replace an existing serialiser for `tp` instead of raising.
 
@@ -51,33 +45,29 @@ def serializer[T](
         if not is_serializer(cls):
             raise TypeError(f"{cls!r} must define both `encode` and `decode` to serialise {tp!r}")
         target = registry if registry is not None else _default_registry
-        target.register(tp, cls(), tag=tag, version=version, override=override)
+        target.register(tp, cls(), override=override)
         return cls
 
     return decorate
 
 
-def register[T](  # noqa: PLR0913
+def register[T](
     tp: type[T],
     serializer_instance: Serializer[T],
     *,
-    tag: str | None = None,
-    version: int = 1,
     registry: SerializerRegistry | None = None,
     override: bool = False,
 ) -> None:
     """Register an already-constructed serialiser — the non-decorator form."""
     target = registry if registry is not None else _default_registry
-    target.register(tp, serializer_instance, tag=tag, version=version, override=override)
+    target.register(tp, serializer_instance, override=override)
 
 
-def register_predicate(  # noqa: PLR0913
+def register_predicate(
     *,
     matches: TypeMatcher,
     encode: EncodeFn,
     decode: DecodeFn,
-    tag_for: TagFor = default_tag,
-    version: int = 1,
     registry: SerializerRegistry | None = None,
 ) -> None:
     """Register a rule claiming an open family of types, e.g. every subclass of a base.
@@ -86,7 +76,7 @@ def register_predicate(  # noqa: PLR0913
     registrations always take precedence over predicate rules.
     """
     target = registry if registry is not None else _default_registry
-    target.register_predicate(matches=matches, encode=encode, decode=decode, tag_for=tag_for, version=version)
+    target.register_predicate(matches=matches, encode=encode, decode=decode)
 
 
 def encode(value: Any, *, registry: SerializerRegistry | None = None) -> Any:
@@ -96,6 +86,6 @@ def encode(value: Any, *, registry: SerializerRegistry | None = None) -> Any:
 
 
 def decode[T](tp: type[T], raw: Any, *, registry: SerializerRegistry | None = None) -> T:
-    """Decode a single tagged value through a registry — mainly useful in tests."""
+    """Cast primitives to a registered type — mainly useful in tests."""
     target = registry if registry is not None else _default_registry
     return target.decode(tp, raw)

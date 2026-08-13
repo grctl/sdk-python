@@ -7,6 +7,7 @@ from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context
 from grctl.exec.operations import StartChild
 from grctl.models import ChildWorkflowStarted, HistoryEvent, HistoryKind, RunInfo
+from grctl.nats.codec import MsgspecCodec
 from tests.unit.exec.fakes import (
     FakeAppender,
     FakeHistoryListenerFactory,
@@ -50,6 +51,7 @@ async def test_start_child_replay_reconstructs_handle_without_publishing() -> No
         run_info,
         "worker-1",
         workflow_api,
+        MsgspecCodec(),
         listener_factory,
         logging.getLogger("tests.exec"),
         ChildTracker(),

@@ -4,8 +4,10 @@ from typing import Any
 import msgspec
 import pytest
 import ulid
+from pydantic import BaseModel
 
 from grctl.client import Client
+from grctl.serde import serializer
 from grctl.worker import Context
 from grctl.workflow import Directive, Workflow
 from tests.spec.workflows import unique_workflow_type
@@ -17,6 +19,120 @@ class StructPayload(msgspec.Struct):
     name: str
     count: int
     tags: list[str]
+
+
+class RegisteredPayload:
+    def __init__(self, name: str, count: int) -> None:
+        self.name = name
+        self.count = count
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, RegisteredPayload) and (self.name, self.count) == (other.name, other.count)
+
+    def __hash__(self) -> int:
+        return hash((self.name, self.count))
+
+
+@serializer(RegisteredPayload)
+class RegisteredPayloadSerializer:
+    def encode(self, value: RegisteredPayload) -> Any:
+        return {"name": value.name, "count": value.count}
+
+    def decode(self, raw: Any) -> RegisteredPayload:
+        return RegisteredPayload(name=raw["name"], count=raw["count"])
+
+
+class PydanticPayload(BaseModel):
+    name: str
+    count: int
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(RegisteredPayload(name="custom-child-input", count=7), id="registered"),
+        pytest.param(PydanticPayload(name="pydantic-child-input", count=11), id="pydantic"),
+    ],
+)
+async def test_child_accepts_registered_inputs(worker, grctl_client: Client, payload: Any) -> None:
+    """A child operation identifies inputs after serde converts them to primitives."""
+    parent_wf_type = unique_workflow_type("spec_child_ser_registered_input_parent")
+    child_wf_type = unique_workflow_type("spec_child_ser_registered_input_child")
+
+    child_wf = Workflow(workflow_type=child_wf_type)
+    parent_wf = Workflow(workflow_type=parent_wf_type)
+
+    @child_wf.step(start=True)
+    async def child_start(ctx: Context, value: Any) -> Directive:
+        assert value == (
+            {"name": payload.name, "count": payload.count}
+            if isinstance(payload, RegisteredPayload)
+            else payload.model_dump()
+        )
+        return ctx.next.complete("child-done")
+
+    @parent_wf.step(start=True)
+    async def parent_start(ctx: Context) -> Directive:
+        handle = await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child", workflow_input={"value": payload})
+        await handle.future
+        return ctx.next.complete("ok")
+
+    await worker([parent_wf, child_wf])
+
+    result = await grctl_client.run_workflow(
+        type=parent_wf_type,
+        id=str(ulid.ULID()),
+        input={},
+        timeout=_WORKFLOW_TIMEOUT,
+    )
+
+    assert result == "ok"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param(RegisteredPayload(name="custom-parent-event", count=5), id="registered"),
+        pytest.param(PydanticPayload(name="pydantic-parent-event", count=13), id="pydantic"),
+    ],
+)
+async def test_send_to_parent_preserves_registered_payload(worker, grctl_client: Client, payload: Any) -> None:
+    """A parent-event operation identifies payloads after serde conversion."""
+    parent_wf_type = unique_workflow_type("spec_child_ser_registered_event_parent")
+    child_wf_type = unique_workflow_type("spec_child_ser_registered_event_child")
+
+    child_wf = Workflow(workflow_type=child_wf_type)
+    parent_wf = Workflow(workflow_type=parent_wf_type)
+
+    @child_wf.step(start=True)
+    async def child_start(ctx: Context) -> Directive:
+        await ctx.send_to_parent("result", payload=payload)
+        return ctx.next.complete("child-done")
+
+    @parent_wf.step(start=True)
+    async def parent_start(ctx: Context) -> Directive:
+        await ctx.start_child(child_wf_type, f"{ctx.run_info.wf_id}-child")
+        return ctx.next.wait()
+
+    @parent_wf.step(event=True, name="result")
+    async def on_result(ctx: Context, value: Any) -> Directive:
+        assert value == (
+            {"name": payload.name, "count": payload.count}
+            if isinstance(payload, RegisteredPayload)
+            else payload.model_dump()
+        )
+        return ctx.next.complete("ok")
+
+    await worker([parent_wf, child_wf])
+
+    result = await grctl_client.run_workflow(
+        type=parent_wf_type,
+        id=str(ulid.ULID()),
+        input={},
+        timeout=_WORKFLOW_TIMEOUT,
+    )
+
+    assert result == "ok"
 
 
 @pytest.mark.parametrize(

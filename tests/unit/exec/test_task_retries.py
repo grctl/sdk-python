@@ -366,9 +366,7 @@ async def test_pydantic_task_result_is_typed_from_its_recorded_outcome() -> None
     assert isinstance(recorded, PydanticPayload)
     assert recorded == payload
     assert isinstance(appender.events[-1].msg, TaskCompleted)
-    assert appender.events[-1].msg.output == {
-        "result": {"$type": "PydanticPayload", "$ver": 1, "$val": payload.model_dump()}
-    }
+    assert appender.events[-1].msg.output == {"result": payload.model_dump()}
 
     replay_appender = FakeAppender()
     replayed = await make_context(appender.events, appender=replay_appender).run_task(build_payload, (), {}, None)

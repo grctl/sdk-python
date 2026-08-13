@@ -15,9 +15,8 @@ class ChildOutcome[T](msgspec.Struct):
 
     Parameterize the type to have the result decoded back into the child's return type,
     e.g. `outcome: ChildOutcome[OrderResult]`. Left bare (`ChildOutcome`), the result
-    stays as it was received: a plain value for a child that returned a primitive, but
-    the serialiser's tagged envelope for a child that returned a registered type. A
-    parent that reads the result of such a child should always parameterize.
+    stays as it was received: a msgpack-native primitive. A parent that needs a
+    custom result type should always parameterize.
 
     The server sends this once per child run, when the child reaches a terminal state.
     Its field names are the callback payload's wire keys, so they are permanent.

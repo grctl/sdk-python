@@ -118,7 +118,14 @@ class Context:
 
     async def send_to_parent(self, event_name: str, payload: Any | None = None) -> None:
         """Emit an event to the parent workflow, if any."""
-        operation = SendToParent(self._parent_run, self._worker_id, self._workflow_api, event_name, payload)
+        operation = SendToParent(
+            self._parent_run,
+            self._worker_id,
+            self._workflow_api,
+            self._codec,
+            event_name,
+            payload,
+        )
         await self._journal.run(operation)
 
     async def start_child(
@@ -140,6 +147,7 @@ class Context:
             self._run_info,
             self._worker_id,
             self._workflow_api,
+            self._codec,
             self._listener_factory,
             self._logger,
             self._childs,

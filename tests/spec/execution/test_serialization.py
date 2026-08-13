@@ -7,6 +7,7 @@ import ulid
 from pydantic import BaseModel
 
 from grctl.client import Client
+from grctl.serde import serializer
 from grctl.worker import Context
 from grctl.workflow import Directive, Workflow
 from tests.spec.workflows import unique_workflow_type
@@ -22,6 +23,26 @@ class StructPayload(msgspec.Struct):
     name: str
     count: int
     tags: list[str]
+
+
+class RegisteredPayload:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, RegisteredPayload) and self.value == other.value
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+
+@serializer(RegisteredPayload)
+class RegisteredPayloadSerializer:
+    def encode(self, value: RegisteredPayload) -> Any:
+        return {"value": value.value}
+
+    def decode(self, raw: Any) -> RegisteredPayload:
+        return RegisteredPayload(raw["value"])
 
 
 @pytest.mark.parametrize(
@@ -127,6 +148,42 @@ async def test_workflow_roundtrips_pydantic(worker, grctl_client: Client) -> Non
     )
 
     assert result == model
+
+
+async def test_workflow_untyped_result_is_pydantic_primitives(worker, grctl_client: Client) -> None:
+    """An untyped result is a plain primitive value."""
+    model = PydanticPayload(name="pydantic-untyped-result", count=23, tags=["x", "y"])
+    wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_pydantic_untyped"))
+
+    @wf.step(start=True)
+    async def start(ctx: Context) -> Directive:
+        return ctx.next.complete(model)
+
+    await worker([wf])
+
+    result = await grctl_client.run_workflow(
+        type=wf.workflow_type, id=str(ulid.ULID()), input={}, timeout=timedelta(seconds=30)
+    )
+
+    assert result == model.model_dump()
+
+
+async def test_workflow_untyped_result_is_custom_primitives(worker, grctl_client: Client) -> None:
+    """An untyped custom result is its serializer's primitive output."""
+    value = RegisteredPayload("custom-untyped-result")
+    wf = Workflow(workflow_type=unique_workflow_type("spec_wf_serialization_custom_untyped"))
+
+    @wf.step(start=True)
+    async def start(ctx: Context) -> Directive:
+        return ctx.next.complete(value)
+
+    await worker([wf])
+
+    result = await grctl_client.run_workflow(
+        type=wf.workflow_type, id=str(ulid.ULID()), input={}, timeout=timedelta(seconds=30)
+    )
+
+    assert result == {"value": value.value}
 
 
 @pytest.mark.parametrize(
@@ -244,7 +301,6 @@ async def test_workflow_returns_none_output(worker, grctl_client: Client) -> Non
         id=str(ulid.ULID()),
         input={},
         timeout=timedelta(seconds=30),
-        return_type=None,
     )
 
     assert result is None

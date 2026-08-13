@@ -59,4 +59,4 @@ class TestDirectRegistration:
 
         register(Money, MoneySerializer(), registry=registry)
 
-        assert registry.encode(Money(Decimal(5), "EUR"))["$val"] == "5"
+        assert registry.encode(Money(Decimal(5), "EUR")) == "5"

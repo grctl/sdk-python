@@ -20,8 +20,6 @@ class PrimitiveConverter(Protocol):
 
     def decode(self, tp: type, raw: Any) -> Any: ...
 
-    def rehydrate(self, raw: Any) -> Any: ...
-
 
 class MsgspecCodec:
     """Bridges msgspec's enc_hook/dec_hook onto a serialiser registry."""
@@ -45,11 +43,10 @@ class MsgspecCodec:
     def from_primitive(self, raw: Any, tp: type | None = None) -> Any:
         """Convert primitives back into `tp`.
 
-        Without a target type the tags carried in the value drive the decode as
-        far as they can, so callers never see raw envelopes.
+        Without a target type, return the msgpack-native value as received.
         """
         if tp is None or tp is Any:
-            return self._serializers.rehydrate(raw)
+            return raw
         return msgspec.convert(raw, tp, dec_hook=self.dec_hook)
 
     def cast(self, value: Any, ty: type | None = None) -> Any:
@@ -60,4 +57,4 @@ class MsgspecCodec:
         return msgspec.msgpack.encode(value, enc_hook=self.enc_hook)
 
     def decode(self, data: bytes) -> Any:
-        return self._serializers.rehydrate(msgspec.msgpack.decode(data))
+        return msgspec.msgpack.decode(data)

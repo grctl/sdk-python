@@ -8,6 +8,7 @@ from typing import Any
 from ulid import ULID
 
 from grctl.exec.child_tracker import ChildTracker
+from grctl.exec.codec import Codec
 from grctl.exec.journal import OperationProgress, Outcome, identify
 from grctl.models import (
     ChildWorkflowStarted,
@@ -133,6 +134,7 @@ class StartChild:
         run_info: RunInfo,
         worker_id: str,
         workflow_api: WorkflowAPI,
+        codec: Codec,
         listener_factory: HistoryListenerFactory,
         logger: Logger,
         childs: ChildTracker,
@@ -145,6 +147,7 @@ class StartChild:
         self._run_info = run_info
         self._worker_id = worker_id
         self._workflow_api = workflow_api
+        self._codec = codec
         self._listener_factory = listener_factory
         self._logger = logger
         self._childs = childs
@@ -166,7 +169,7 @@ class StartChild:
             {
                 "wf_type": self._workflow_type,
                 "wf_id": self._workflow_id,
-                "workflow_input": self._workflow_input,
+                "workflow_input": self._codec.to_primitive(self._workflow_input),
                 "workflow_timeout": int(self._workflow_timeout.total_seconds()) if self._workflow_timeout else None,
             },
         )
@@ -221,11 +224,12 @@ class StartChild:
 class SendToParent:
     """Emits an event to the parent workflow, recording it so replay doesn't republish it."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         parent_run: RunInfo | None,
         worker_id: str,
         workflow_api: WorkflowAPI,
+        codec: Codec,
         event_name: str,
         payload: Any | None = None,
     ) -> None:
@@ -234,6 +238,7 @@ class SendToParent:
         self._parent_run = parent_run
         self._worker_id = worker_id
         self._workflow_api = workflow_api
+        self._codec = codec
         self._event_name = event_name
         self._payload = payload
 
@@ -242,7 +247,11 @@ class SendToParent:
         return "send_to_parent"
 
     def operation_id(self, seq: int) -> str:
-        return identify(self.name, seq, {"event_name": self._event_name, "payload": self._payload})
+        return identify(
+            self.name,
+            seq,
+            {"event_name": self._event_name, "payload": self._codec.to_primitive(self._payload)},
+        )
 
     @property
     def acceptable_kinds(self) -> frozenset[HistoryKind]:

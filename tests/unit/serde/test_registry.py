@@ -1,5 +1,3 @@
-"""Behavioural guarantees for user-type serialiser registration and replay."""
-
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -11,16 +9,8 @@ import msgspec
 import pytest
 from pydantic import BaseModel
 
-from grctl.serde import (
-    MalformedEnvelopeError,
-    NativeTypeError,
-    SerializerConflictError,
-    SerializerRegistry,
-    TagMismatchError,
-    UnsupportedTypeError,
-    VersionMismatchError,
-)
-from tests.unit.serde.fakes import Invoice, InvoiceSerializer, Money, MoneySerializer
+from grctl.serde import NativeTypeError, SerializerConflictError, SerializerRegistry, UnsupportedTypeError
+from tests.unit.serde.fakes import Money, MoneySerializer
 
 
 @dataclass
@@ -47,69 +37,17 @@ def registry() -> SerializerRegistry:
     return result
 
 
-class TestDurableUserValues:
-    def test_registered_value_records_its_type_tag_version_and_primitive_payload(
-        self, registry: SerializerRegistry
-    ) -> None:
-        encoded = registry.encode(Money(Decimal("9.99"), "EUR"))
+class TestRegisteredTypes:
+    def test_registered_value_converts_to_its_serializer_output(self, registry: SerializerRegistry) -> None:
+        assert registry.encode(Money(Decimal("9.99"), "EUR")) == {"amount": "9.99", "currency": "EUR"}
 
-        assert encoded == {"$type": "Money", "$ver": 1, "$val": {"amount": "9.99", "currency": "EUR"}}
-
-    def test_registered_value_round_trips_through_durable_history(self, registry: SerializerRegistry) -> None:
+    def test_registered_value_round_trips_when_the_caller_requests_its_type(self, registry: SerializerRegistry) -> None:
         original = Money(Decimal("9.99"), "EUR")
 
         assert registry.decode(Money, registry.encode(original)) == original
 
-    def test_explicit_tag_keeps_values_readable_after_a_class_rename(self, registry: SerializerRegistry) -> None:
-        registry.register(Invoice, InvoiceSerializer(), tag="invoice.v1")
-
-        assert registry.encode(Invoice(Money(Decimal(1), "EUR")))["$type"] == "invoice.v1"
-
-    def test_nested_registered_values_are_rebuilt_before_the_outer_value_decodes(
-        self, registry: SerializerRegistry
-    ) -> None:
-        registry.register(Invoice, InvoiceSerializer())
-        original = Invoice(Money(Decimal("42.00"), "GBP"))
-
-        assert registry.decode(Invoice, registry.encode(original)) == original
-
-
-class TestIncompatibleDurableValues:
-    def test_value_written_for_a_different_type_is_rejected(self, registry: SerializerRegistry) -> None:
-        registry.register(Invoice, InvoiceSerializer())
-
-        with pytest.raises(TagMismatchError):
-            registry.decode(Invoice, registry.encode(Money(Decimal(1), "EUR")))
-
-    def test_value_without_a_serialiser_envelope_is_rejected(self, registry: SerializerRegistry) -> None:
-        with pytest.raises(MalformedEnvelopeError):
-            registry.decode(Money, {"amount": "1", "currency": "EUR"})
-
-    def test_old_value_without_a_migration_is_rejected(self, registry: SerializerRegistry) -> None:
-        written_at_v1 = registry.encode(Money(Decimal(20), "C"))
-        upgraded = SerializerRegistry()
-        upgraded.register(Money, MoneySerializer(), version=2)
-
-        with pytest.raises(VersionMismatchError):
-            upgraded.decode(Money, written_at_v1)
-
-    def test_old_value_is_upgraded_before_decoding_when_a_migration_exists(self, registry: SerializerRegistry) -> None:
-        class TemperatureV2Serializer:
-            def encode(self, value: Money) -> Any:
-                return {"celsius": str(value.amount)}
-
-            def decode(self, raw: Any) -> Money:
-                return Money(Decimal(raw["celsius"]), "C")
-
-            def migrate(self, raw: Any, from_version: int) -> Any:
-                assert from_version == 1
-                return {"celsius": raw["amount"]}
-
-        written_at_v1 = registry.encode(Money(Decimal(20), "C"))
-        upgraded = SerializerRegistry()
-        upgraded.register(Money, TemperatureV2Serializer(), version=2)
-
-        assert upgraded.decode(Money, written_at_v1) == Money(Decimal(20), "C")
+    def test_raw_primitives_can_be_cast_to_a_registered_type(self, registry: SerializerRegistry) -> None:
+        assert registry.decode(Money, {"amount": "1", "currency": "EUR"}) == Money(Decimal(1), "EUR")
 
 
 class TestRegistrationRules:
@@ -127,14 +65,17 @@ class TestRegistrationRules:
         with pytest.raises(SerializerConflictError):
             registry.register(Money, MoneySerializer())
 
-    def test_explicit_override_replaces_the_registered_durable_tag(self, registry: SerializerRegistry) -> None:
-        registry.register(Money, MoneySerializer(), tag="money.v2", override=True)
+    def test_override_replaces_an_existing_serializer(self, registry: SerializerRegistry) -> None:
+        class EuroMoneySerializer:
+            def encode(self, value: Money) -> Any:
+                return str(value.amount)
 
-        assert registry.encode(Money(Decimal(1), "EUR"))["$type"] == "money.v2"
+            def decode(self, raw: Any) -> Money:
+                return Money(Decimal(raw), "EUR")
 
-    def test_two_user_types_cannot_claim_the_same_durable_tag(self, registry: SerializerRegistry) -> None:
-        with pytest.raises(SerializerConflictError):
-            registry.register(Invoice, InvoiceSerializer(), tag="Money")
+        registry.register(Money, EuroMoneySerializer(), override=True)
+
+        assert registry.encode(Money(Decimal(1), "USD")) == "1"
 
     @pytest.mark.parametrize(
         "native_type",
@@ -144,25 +85,13 @@ class TestRegistrationRules:
         with pytest.raises(NativeTypeError):
             SerializerRegistry().register(native_type, MoneySerializer())
 
-    def test_exact_registration_takes_precedence_over_a_matching_family_rule(self) -> None:
-        class Order(BaseModel):
-            sku: str
+    def test_invalid_direct_registration_is_rejected_before_the_first_encode(self) -> None:
+        class IncompleteSerializer:
+            def encode(self, value: Money) -> Any:
+                return str(value.amount)
 
-        class OrderSerializer:
-            def encode(self, value: Order) -> Any:
-                return value.sku
-
-            def decode(self, raw: Any) -> Order:
-                return Order(sku=raw)
-
-        registry = SerializerRegistry()
-        registry.register(Order, OrderSerializer())
-
-        assert registry.encode(Order(sku="abc"))["$val"] == "abc"
-
-    def test_non_class_annotation_does_not_break_predicate_lookup(self, registry: SerializerRegistry) -> None:
-        with pytest.raises(UnsupportedTypeError):
-            registry.decode(list[int], {"$type": "Money", "$ver": 1, "$val": {}})
+        with pytest.raises(TypeError):
+            SerializerRegistry().register(Money, IncompleteSerializer())  # ty:ignore[invalid-argument-type]
 
 
 class TestBuiltInFamilies:
@@ -196,12 +125,6 @@ class TestBuiltInFamilies:
         with pytest.raises(UnsupportedTypeError):
             SerializerRegistry(include_builtins=False).encode(Order(sku="abc"))
 
-
-class TestUntypedHistoryReads:
-    def test_known_tag_inside_containers_rehydrates_to_the_registered_type(self, registry: SerializerRegistry) -> None:
-        encoded = {"prices": [registry.encode(Money(Decimal(1), "EUR"))], "count": 1}
-
-        assert registry.rehydrate(encoded) == {"prices": [Money(Decimal(1), "EUR")], "count": 1}
-
-    def test_unknown_tag_degrades_to_its_payload_for_an_untyped_read(self) -> None:
-        assert SerializerRegistry().rehydrate({"$type": "Gone", "$ver": 1, "$val": {"x": 1}}) == {"x": 1}
+    def test_non_class_annotation_does_not_break_predicate_lookup(self, registry: SerializerRegistry) -> None:
+        with pytest.raises(UnsupportedTypeError):
+            registry.decode(list[int], {"amount": "1", "currency": "EUR"})

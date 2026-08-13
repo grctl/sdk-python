@@ -106,7 +106,6 @@ class Execution:
     async def execute(self) -> None:
         await self.send_step_picked_up()
         handler = self.handler_config.handler
-        payload = self.get_serialised_handler_payload()
         # Stays None if the step is cancelled: a step that never reached an outcome has
         # nothing to report, and what becomes of a run whose worker went away is the
         # server's decision, not ours.
@@ -115,6 +114,7 @@ class Execution:
         try:
             self.is_executing = True
             context_token = set_current_context(self.context)
+            payload = self.get_serialised_handler_payload()
             if payload is None:
                 outcome_directive = await handler(self.context)
             else:

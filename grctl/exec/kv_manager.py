@@ -67,9 +67,8 @@ class KVManager:
             if val is None:
                 raise StoreKeyNotFoundError(key)
 
-            # Untyped reads still need the caster: a value written by a custom
-            # serialiser is tagged on the wire and must be rebuilt, not returned
-            # as its raw envelope.
+            # An untyped read intentionally stays a primitive value. Callers
+            # request a type when they want a registered serializer to cast it.
             self.data[key] = val if ty is not None else self.caster.cast(val)
 
         val = self.data[key]

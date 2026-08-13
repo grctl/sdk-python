@@ -186,9 +186,7 @@ async def test_task_accepts_pydantic_input(worker, grctl_client: Client) -> None
         [HistoryKind.task_started, HistoryKind.task_completed]
     )
 
-    assert task_events[0].msg.args == {  # ty:ignore[unresolved-attribute]
-        "value": {"$type": "PydanticPayload", "$ver": 1, "$val": payload}
-    }
+    assert task_events[0].msg.args == {"value": payload}  # ty:ignore[unresolved-attribute]
 
 
 async def test_task_accepts_msgspec_struct_input(worker, grctl_client: Client) -> None:

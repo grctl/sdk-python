@@ -7,13 +7,17 @@ identity — a divergence left out of an id is one replay will never catch.
 
 import logging
 from datetime import timedelta
+from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.journal import NonDeterminismError, identify
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.models import RunInfo
+from grctl.nats.codec import MsgspecCodec
+from grctl.serde import SerializerRegistry
 from tests.unit.exec.fakes import (
     DEFAULT_RUN_INFO,
     DEFAULT_WORKER_ID,
@@ -26,11 +30,14 @@ from tests.unit.exec.fakes import (
 _PARENT_RUN = RunInfo(id="parent-run", wf_id="parent-wf", wf_type="parent-type")
 
 
-def _start_child(workflow_id: str = "child-1", workflow_input: dict | None = None) -> StartChild:
+def _start_child(
+    workflow_id: str = "child-1", workflow_input: dict | None = None, codec: MsgspecCodec | None = None
+) -> StartChild:
     return StartChild(
         DEFAULT_RUN_INFO,
         DEFAULT_WORKER_ID,
         FakeWorkflowAPI(),
+        codec if codec is not None else MsgspecCodec(),
         FakeHistoryListenerFactory(),
         logging.getLogger("tests.exec"),
         ChildTracker(),
@@ -40,8 +47,15 @@ def _start_child(workflow_id: str = "child-1", workflow_input: dict | None = Non
     )
 
 
-def _send_to_parent(event_name: str, payload: object = None) -> SendToParent:
-    return SendToParent(_PARENT_RUN, DEFAULT_WORKER_ID, FakeWorkflowAPI(), event_name, payload)
+def _send_to_parent(event_name: str, payload: object = None, codec: MsgspecCodec | None = None) -> SendToParent:
+    return SendToParent(
+        _PARENT_RUN,
+        DEFAULT_WORKER_ID,
+        FakeWorkflowAPI(),
+        codec if codec is not None else MsgspecCodec(),
+        event_name,
+        payload,
+    )
 
 
 # --- identify: the shared format every operation composes through ---
@@ -93,6 +107,33 @@ def test_send_to_parent_identity_includes_the_event_name() -> None:
 
 def test_send_to_parent_identity_includes_the_payload() -> None:
     assert _send_to_parent("status", {"n": 1}).operation_id(1) != _send_to_parent("status", {"n": 2}).operation_id(1)
+
+
+class RegisteredPayload:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class RegisteredPayloadSerializer:
+    def encode(self, value: RegisteredPayload) -> Any:
+        return {"value": value.value}
+
+    def decode(self, raw: Any) -> RegisteredPayload:
+        return RegisteredPayload(raw["value"])
+
+
+class PydanticPayload(BaseModel):
+    value: str
+
+
+@pytest.mark.parametrize("payload", [RegisteredPayload("custom"), PydanticPayload(value="pydantic")])
+def test_child_operation_identity_accepts_serde_supported_payloads(payload: object) -> None:
+    registry = SerializerRegistry()
+    registry.register(RegisteredPayload, RegisteredPayloadSerializer())
+    codec = MsgspecCodec(registry)
+
+    assert _start_child(workflow_input={"payload": payload}, codec=codec).operation_id(1)
+    assert _send_to_parent("result", payload, codec=codec).operation_id(1)
 
 
 # A task's identity is observed through replay rather than directly: Task is constructed
