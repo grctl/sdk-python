@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Any, Protocol, TypeVar
 
 from grctl.models import Directive
@@ -17,21 +17,24 @@ HandlerF = TypeVar("HandlerF", bound=Handler)
 
 
 class StepKind(StrEnum):
-    """How a workflow step is entered."""
+    """A workflow step's role in server registration."""
 
-    start = "start"
-    internal = "internal"
-    external = "external"
+    start = auto()
+    event = auto()
+    step = auto()
 
 
 @dataclass
 class HandlerSpec:
-    params: dict[str, type]  # param name → resolved type, excludes ctx
+    payload_parameters: dict[str, type]  # Parameter name → resolved type, excludes ctx.
+    defaulted_payload_parameters: set[str] = field(default_factory=set)
 
 
-@dataclass
-class HandlerConfig:
+@dataclass(frozen=True)
+class RegisteredStep:
+    """A handler registered to serve one workflow step."""
+
     handler: Callable[..., Awaitable[Directive]]
     spec: HandlerSpec
-    kind: StepKind = StepKind.internal
+    kind: StepKind = StepKind.step
     timeout: timedelta | None = None

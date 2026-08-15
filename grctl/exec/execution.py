@@ -17,7 +17,7 @@ from grctl.exec.task import reset_current_context, set_current_context
 from grctl.exec.workflow_logger import build_workflow_logger
 from grctl.models import Directive, ErrorDetails, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
-from grctl.models.handler import HandlerConfig
+from grctl.models.handler import RegisteredStep
 from grctl.models.worker import WorkerInfo
 from grctl.workflow.handle import WorkflowAPI, WorkflowHandleFactory
 from grctl.workflow.workflow import StepInfo
@@ -47,7 +47,7 @@ class Execution:
     run_info: RunInfo
     worker_info: WorkerInfo
     directive: Directive
-    handler_config: HandlerConfig
+    handler_config: RegisteredStep
 
     # Child handles started during this step. They are single-step-scoped: cross-step
     # coordination uses events/callbacks, not in-memory futures, so any handle still
@@ -62,7 +62,7 @@ class Execution:
         self,
         worker_info: WorkerInfo,
         directive: Directive,
-        handler_config: HandlerConfig,
+        handler_config: RegisteredStep,
         deps: ExecutionDeps,
         logger: Logger,
     ) -> None:
@@ -198,13 +198,13 @@ class Execution:
 
     def get_serialised_handler_payload(self) -> dict[str, Any] | None:
         spec = self.handler_config.spec
-        if not spec.params or self.payload is None:
+        if not spec.payload_parameters or self.payload is None:
             return None
 
         # Single param: if payload is already keyed by param name use the value,
         # otherwise treat payload itself as the value (e.g. bare Pydantic model).
-        if len(spec.params) == 1:
-            name, param_type = next(iter(spec.params.items()))
+        if len(spec.payload_parameters) == 1:
+            name, param_type = next(iter(spec.payload_parameters.items()))
             raw = self.payload[name] if isinstance(self.payload, dict) and name in self.payload else self.payload
             typed_value = self.codec.from_primitive(raw, param_type)
             return {name: typed_value}
@@ -212,9 +212,12 @@ class Execution:
         # Multi param: convert each param from the payload dict and pass as kwargs
         if not isinstance(self.payload, dict):
             raise TypeError(
-                f"Handler expects params {list(spec.params)} but self.payload is not a dict: {type(self.payload)}"
+                "Handler expects payload parameters "
+                f"{list(spec.payload_parameters)} but self.payload is not a dict: {type(self.payload)}"
             )
 
         return {
-            name: self.codec.from_primitive(self.payload[name], param_type) for name, param_type in spec.params.items()
+            name: self.codec.from_primitive(self.payload[name], param_type)
+            for name, param_type in spec.payload_parameters.items()
+            if name in self.payload
         }

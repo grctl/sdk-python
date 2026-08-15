@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Protocol
 
 from grctl.exec.codec import Codec as ExecutionCodec
@@ -8,7 +8,6 @@ from grctl.exec.kv_manager import Caster, KVApi, KVManager
 from grctl.exec.step_history import HistoryWriter, StepHistory
 from grctl.logging_config import get_logger
 from grctl.models import Directive, HistoryEvent, RunInfo, Step
-from grctl.models.command import WorkflowTypeDef
 from grctl.models.errors import WorkflowStepAlreadyExecutedError
 from grctl.models.worker import WorkerInfo
 from grctl.workflow import StepInfo, Workflow
@@ -56,35 +55,6 @@ class Connection(Protocol):
     def build_directive_api(self, run_info: RunInfo) -> DirectiveAPI: ...
 
 
-class WorkflowRegistry:
-    """The single access point for the workflows this worker serves.
-
-    Everything that needs a registered workflow (or its configs) goes through
-    here rather than touching the workflow list directly.
-    """
-
-    def __init__(self, workflows: list[Workflow]) -> None:
-        self.workflows = {wf.workflow_type: wf for wf in workflows}
-
-    def all(self) -> list[Workflow]:
-        return list(self.workflows.values())
-
-    def types(self) -> list[str]:
-        return list(self.workflows)
-
-    def type_defs(self) -> list[WorkflowTypeDef]:
-        """Structural definition of every registered workflow, for server registration."""
-        return [wf.type_def() for wf in self.workflows.values()]
-
-    def get(self, workflow_type: str) -> Workflow:
-        workflow = self.workflows.get(workflow_type)
-        if workflow is None:
-            raise ValueError(
-                f"No workflow registered for type '{workflow_type}'. Registered types: {list(self.workflows)}"
-            )
-        return workflow
-
-
 class ExecutionManager:
     """Tracks in-flight step executions and builds new ones from directives.
 
@@ -93,8 +63,13 @@ class ExecutionManager:
     as a redelivery rather than double-run the step.
     """
 
-    def __init__(self, registry: WorkflowRegistry, worker_info: WorkerInfo, connection: Connection) -> None:
-        self.registry = registry
+    def __init__(
+        self,
+        workflow_lookup: Callable[[str], Workflow],
+        worker_info: WorkerInfo,
+        connection: Connection,
+    ) -> None:
+        self.workflow_lookup = workflow_lookup
         self.worker_info = worker_info
         self.connection = connection
         self.handle_factory = WorkflowHandleFactory(
@@ -158,7 +133,7 @@ class ExecutionManager:
             raise NotImplementedError(f"Execution construction for directive kind '{directive.kind}' not supported")
 
         run_info = directive.run_info
-        workflow = self.registry.get(run_info.wf_type)
+        workflow = self.workflow_lookup(run_info.wf_type)
         handler_config = workflow.step_handler(directive.msg.step_name)
         deps = await self.build_deps(directive, workflow.step_infos)
 

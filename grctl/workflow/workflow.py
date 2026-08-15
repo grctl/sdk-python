@@ -8,26 +8,42 @@ from datetime import timedelta
 from typing import Any
 
 from grctl.models.command import StepDef, WorkflowTypeDef
-from grctl.models.handler import HandlerConfig, HandlerF, HandlerSpec, StepKind
+from grctl.models.handler import HandlerF, HandlerSpec, RegisteredStep, StepKind
 
 
 def get_handler_spec(fn: Callable[..., Any]) -> HandlerSpec:
+    """Describe the payload accepted by a workflow handler.
+
+    Payload values are passed to handlers as keyword arguments. Parameters after
+    ``ctx`` must therefore be keyword-capable; positional-only parameters are
+    rejected during workflow registration. Missing payload values are omitted,
+    allowing Python defaults to apply and Python to report missing required
+    arguments.
+    """
     sig = inspect.signature(fn)
     hints = typing.get_type_hints(fn)
 
     params: dict[str, type] = {}
+    defaulted_params: set[str] = set()
     first = True
     for name, param in sig.parameters.items():
         if first:
             first = False
             continue
+        if param.kind is inspect.Parameter.POSITIONAL_ONLY:
+            raise TypeError(f"Handler '{fn.__name__}' payload parameters must not be positional-only")  # ty:ignore[unresolved-attribute]
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             raise TypeError(f"Handler '{fn.__name__}' must not use *args or **kwargs")  # ty:ignore[unresolved-attribute]
         if name not in hints:
             raise TypeError(f"Handler '{fn.__name__}' parameter '{name}' must have a type annotation")  # ty:ignore[unresolved-attribute]
         params[name] = hints[name]
+        if param.default is not inspect.Parameter.empty:
+            defaulted_params.add(name)
 
-    return HandlerSpec(params=params)
+    return HandlerSpec(
+        payload_parameters=params,
+        defaulted_payload_parameters=defaulted_params,
+    )
 
 
 @dataclass(frozen=True)
@@ -40,13 +56,13 @@ class StepInfo:
 class Workflow:
     """Workflow definition with one registry for all mutating step handlers.
 
-    A step is internal by default. ``start=True`` marks the workflow creation
+    A regular step is the default. ``start=True`` marks the workflow creation
     step, and ``event=True`` makes the step externally triggerable.
     """
 
     def __init__(self, workflow_type: str) -> None:
         self._type = workflow_type
-        self._steps: dict[str, HandlerConfig] = {}
+        self._steps: dict[str, RegisteredStep] = {}
         self._query_handlers: dict[str, Callable[..., Any]] = {}
 
     @property
@@ -73,14 +89,14 @@ class Workflow:
     @property
     def event_names(self) -> list[str]:
         """Return the names of externally triggerable steps."""
-        return [name for name, config in self._steps.items() if config.kind is StepKind.external]
+        return [name for name, config in self._steps.items() if config.kind is StepKind.event]
 
     @property
     def query_names(self) -> list[str]:
         """Return the names of registered query handlers."""
         return list(self._query_handlers)
 
-    def step_handler(self, name: str) -> HandlerConfig:
+    def step_handler(self, name: str) -> RegisteredStep:
         """Look up a registered step handler by name."""
         config = self._steps.get(name)
         if config is None:
@@ -101,7 +117,7 @@ class Workflow:
             StepDef(
                 name=name,
                 timeout_ms=int(config.timeout.total_seconds() * 1000) if config.timeout else 0,
-                external=config.kind is StepKind.external,
+                external=config.kind is StepKind.event,
             )
             for name, config in self._steps.items()
         ]
@@ -122,10 +138,10 @@ class Workflow:
     ) -> Callable[[HandlerF], HandlerF]:
         """Decorate a workflow step handler.
 
-        Steps are internal continuations by default. Set ``start=True`` for
-        the workflow creation step or ``event=True`` for an externally
-        triggerable step. ``timeout`` is the handler execution timeout; when
-        omitted, the server applies its configured default.
+        Regular steps are server-directed continuations. Set ``start=True`` for
+        the workflow creation step or ``event=True`` for an externally triggerable
+        step. ``timeout`` is the handler execution timeout; when omitted, the
+        server applies its configured default.
         """
 
         def decorator(func: HandlerF) -> HandlerF:
@@ -138,8 +154,8 @@ class Workflow:
             if start and self.start_step_name is not None:
                 raise ValueError(f"Workflow already has a start handler: '{self.start_step_name}'")
 
-            kind = StepKind.start if start else StepKind.external if event else StepKind.internal
-            self._steps[step_name] = HandlerConfig(
+            kind = StepKind.start if start else StepKind.event if event else StepKind.step
+            self._steps[step_name] = RegisteredStep(
                 handler=func,
                 spec=get_handler_spec(func),
                 kind=kind,

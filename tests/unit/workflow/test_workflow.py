@@ -19,7 +19,7 @@ async def test_workflow_type_returns_the_configured_type() -> None:
     assert make_workflow().workflow_type == "test-workflow"
 
 
-async def test_step_defaults_to_an_internal_step() -> None:
+async def test_step_defaults_to_a_regular_step() -> None:
     wf = make_workflow()
 
     @wf.step()
@@ -27,7 +27,7 @@ async def test_step_defaults_to_an_internal_step() -> None:
         return name
 
     assert wf.step_names == ["my_step"]
-    assert wf.step_handler("my_step").kind is StepKind.internal
+    assert wf.step_handler("my_step").kind is StepKind.step
     assert wf.start_step_name is None
     assert wf.event_names == []
 
@@ -71,7 +71,7 @@ async def test_start_and_event_flags_cannot_be_combined() -> None:
             return None
 
 
-async def test_event_step_defaults_to_function_name_and_is_external() -> None:
+async def test_event_step_defaults_to_function_name_and_is_an_event() -> None:
     wf = make_workflow()
 
     @wf.step(event=True)
@@ -79,7 +79,7 @@ async def test_event_step_defaults_to_function_name_and_is_external() -> None:
         return None
 
     assert wf.event_names == ["approve"]
-    assert wf.step_handler("approve").kind is StepKind.external
+    assert wf.step_handler("approve").kind is StepKind.event
     assert wf.type_def().step_defs[0].external is True
 
 
@@ -163,10 +163,11 @@ async def test_registering_a_duplicate_query_name_raises() -> None:
 
 
 async def test_get_handler_spec_skips_the_first_parameter_and_resolves_types() -> None:
-    async def handler(ctx: Ctx, name: str, count: int) -> None:
+    async def handler(ctx: Ctx, name: str, count: int = 3) -> None:
         return None
 
-    assert get_handler_spec(handler).params == {"name": str, "count": int}
+    assert get_handler_spec(handler).payload_parameters == {"name": str, "count": int}
+    assert get_handler_spec(handler).defaulted_payload_parameters == {"count"}
 
 
 async def test_get_handler_spec_raises_without_a_type_annotation() -> None:
@@ -174,6 +175,14 @@ async def test_get_handler_spec_raises_without_a_type_annotation() -> None:
         return None
 
     with pytest.raises(TypeError, match="must have a type annotation"):
+        get_handler_spec(handler)
+
+
+async def test_get_handler_spec_rejects_positional_only_payload_parameters() -> None:
+    async def handler(ctx: Ctx, order_id: str, /) -> None:
+        return None
+
+    with pytest.raises(TypeError, match="must not be positional-only"):
         get_handler_spec(handler)
 
 

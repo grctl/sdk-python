@@ -4,12 +4,13 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from grctl.exec.manager import Connection as ExecConnection
-from grctl.exec.manager import ExecutionManager, WorkflowRegistry
+from grctl.exec.manager import ExecutionManager
 from grctl.logging_config import get_logger
 from grctl.models import Command, Directive, GrctlAPIResponse, WorkflowTypeDef
 from grctl.models.worker import WorkerInfo
 from grctl.worker.cmd_handler import CMDHandler
 from grctl.worker.errors import RegistrationError
+from grctl.worker.registry import WorkflowRegistry
 from grctl.workflow.workflow import Workflow
 
 logger = get_logger(__name__)
@@ -63,7 +64,7 @@ class WorkerManager:
         self.worker_id = worker_id
         self.worker_info = WorkerInfo(id=worker_id, name=worker_name)
         self.registry = WorkflowRegistry(workflows)
-        self.execution_manager = ExecutionManager(self.registry, self.worker_info, connection)
+        self.execution_manager = ExecutionManager(self.registry.get, self.worker_info, connection)
         self.exec_job_listener: Listener
         self.worker_cmd_listener: Listener
 

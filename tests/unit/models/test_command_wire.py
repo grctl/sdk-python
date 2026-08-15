@@ -1,9 +1,12 @@
+from dataclasses import FrozenInstanceError
+
 import msgspec
+import pytest
 
 from grctl.models import Directive
 from grctl.models.command import StepDef, WorkflowTypeDef
 from grctl.models.directive import Start, Step
-from grctl.models.handler import HandlerConfig, HandlerSpec, StepKind
+from grctl.models.handler import HandlerSpec, RegisteredStep, StepKind
 
 
 def test_workflow_type_def_uses_step_defs_wire_shape() -> None:
@@ -41,12 +44,19 @@ async def handler() -> Directive:
     raise NotImplementedError
 
 
-def test_handler_config_has_step_kind_and_no_timeout_handler() -> None:
-    config = HandlerConfig(
+def test_registered_step_has_step_kind_and_no_timeout_handler() -> None:
+    step = RegisteredStep(
         handler=handler,
-        spec=HandlerSpec(params={}),
-        kind=StepKind.external,
+        spec=HandlerSpec(payload_parameters={}),
+        kind=StepKind.event,
     )
 
-    assert config.kind is StepKind.external
-    assert not hasattr(config, "on_timeout_handler")
+    assert step.kind is StepKind.event
+    assert not hasattr(step, "on_timeout_handler")
+
+
+def test_registered_step_is_immutable() -> None:
+    step = RegisteredStep(handler=handler, spec=HandlerSpec(payload_parameters={}))
+
+    with pytest.raises(FrozenInstanceError):
+        step.__setattr__("timeout", None)

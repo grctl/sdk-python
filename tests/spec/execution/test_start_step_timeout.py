@@ -29,6 +29,7 @@ async def test_start_step_timeout_emits_timeout_event(worker, grctl_client) -> N
     timeout_event = step_events[-1]
     assert timeout_event.kind == HistoryKind.step_timeout
     assert timeout_event.msg.step_name == "start"  # ty:ignore[unresolved-attribute]
+    await handle.future.discard()
 
 
 async def test_start_step_timeout_fails_workflow(worker, grctl_client) -> None:

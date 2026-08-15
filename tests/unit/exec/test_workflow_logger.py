@@ -9,7 +9,7 @@ from grctl.exec.execution import Execution, ExecutionDeps
 from grctl.exec.kv_manager import KVManager
 from grctl.logging_config import get_logger
 from grctl.models import Directive, DirectiveKind, HistoryEvent, Step
-from grctl.models.handler import HandlerConfig, HandlerSpec
+from grctl.models.handler import HandlerSpec, RegisteredStep
 from grctl.models.worker import WorkerInfo
 from grctl.nats.codec import MsgspecCodec
 from grctl.workflow.handle import WorkflowHandleFactory
@@ -181,7 +181,7 @@ async def run_step(step_history: list[HistoryEvent], appender: FakeAppender) -> 
             run_info=DEFAULT_RUN_INFO,
             msg=Step(step_name="current_step"),
         ),
-        HandlerConfig(handler=handler, spec=HandlerSpec(params={})),
+        RegisteredStep(handler=handler, spec=HandlerSpec(payload_parameters={})),
         ExecutionDeps(
             kvman=KVManager(FakeKVApi(), codec),
             history_appender=appender,
