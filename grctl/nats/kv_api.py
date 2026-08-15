@@ -1,7 +1,7 @@
 from typing import Any
 
 import msgspec
-from nats.js.client import JetStreamContext
+from nats.jetstream import JetStream
 
 from grctl.logging_config import get_logger
 from grctl.models import RunInfo
@@ -17,8 +17,8 @@ class NatsKVApi:
     exposed here — they flow through the server as step directives.
     """
 
-    def __init__(self, js: JetStreamContext, run: RunInfo) -> None:
-        self._js = js
+    def __init__(self, jetstream: JetStream, run: RunInfo) -> None:
+        self._jetstream = jetstream
         self._run = run
         self._kv = None
 
@@ -38,7 +38,7 @@ class NatsKVApi:
         full_key = self._make_key(key)
         stream_name = manifest.state_stream_name()
         try:
-            entry = await self._js.get_last_msg(stream_name=stream_name, subject=full_key)
+            entry = await self._jetstream.get_last_message_for_subject(stream_name, full_key)
             if entry is None or entry.data is None:
                 return None
 

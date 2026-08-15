@@ -16,15 +16,9 @@ from grctl.models import (
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 from grctl.nats.nats_client import CoreRequestClient
+from grctl.settings import get_settings
 
 logger = get_logger(__name__)
-
-_REQUEST_TIMEOUT_SECONDS = 5.0
-
-# Bounded retry on transport failure. The ceiling is small so a caller that
-# treats a request as fail-fast exits promptly once it is reached.
-_MAX_ATTEMPTS = 5
-_RETRY_BASE_DELAY_SECONDS = 0.5
 
 
 class NatsWorkerAPI:
@@ -55,16 +49,16 @@ class NatsWorkerAPI:
         is returned to the caller; only transport failures are retried, and the
         last one propagates once attempts are exhausted.
         """
-        for attempt in range(1, _MAX_ATTEMPTS + 1):
+        settings = get_settings()
+        max_attempts = settings.nats_worker_registration_max_attempts
+        for attempt in range(1, max_attempts + 1):
             try:
                 reply = await self._send(cmd)
             except Exception as exc:
-                logger.warning(
-                    "Worker API request '%s' attempt %d/%d failed: %s", cmd.kind, attempt, _MAX_ATTEMPTS, exc
-                )
-                if attempt == _MAX_ATTEMPTS:
+                logger.warning("Worker API request '%s' attempt %d/%d failed: %s", cmd.kind, attempt, max_attempts, exc)
+                if attempt == max_attempts:
                     raise
-                await asyncio.sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
+                await asyncio.sleep(settings.nats_worker_registration_retry_base_delay_seconds * attempt)
                 continue
             return msgspec.msgpack.decode(reply, type=GrctlAPIResponse)
 
@@ -73,5 +67,5 @@ class NatsWorkerAPI:
     async def _send(self, cmd: Command) -> bytes:
         subject = manifest.worker_command_subject()
         data = command_encoder(cmd, enc_hook=self._codec.enc_hook)
-        msg = await self._nc.request(subject, data, timeout=_REQUEST_TIMEOUT_SECONDS)
+        msg = await self._nc.request(subject, data, timeout=get_settings().nats_request_timeout)
         return msg.data

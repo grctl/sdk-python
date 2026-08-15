@@ -4,12 +4,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
-from nats.js.client import JetStreamContext
-from nats.js.errors import FetchTimeoutError
+from nats.jetstream import JetStream
 
-from grctl.models import HistoryEvent, HistoryKind, history_decoder
-from grctl.nats.manifest import manifest
+from grctl.models import HistoryEvent, HistoryKind
+from grctl.nats.codec import MsgspecCodec
+from grctl.nats.history_api import NatsHistoryAPI
 
 _POLL_INTERVAL = 0.2
 
@@ -21,7 +20,7 @@ async def _wait_until_released(pause_event: Any | None) -> None:
 
 
 async def _wait_for_history_event(  # noqa: PLR0913
-    js: JetStreamContext,
+    jetstream: JetStream,
     wf_id: str,
     run_id: str,
     kind: HistoryKind,
@@ -30,30 +29,10 @@ async def _wait_for_history_event(  # noqa: PLR0913
     occurrence: int = 0,
 ) -> HistoryEvent:
     """Poll the run history stream until the matching event is durable."""
-    history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
-    history_stream = manifest.history_stream_name()
     start = time.monotonic()
 
     while time.monotonic() - start < timeout_s:
-        subscription = await js.pull_subscribe(
-            subject=history_subject,
-            stream=history_stream,
-            config=ConsumerConfig(
-                deliver_policy=DeliverPolicy.ALL,
-                ack_policy=AckPolicy.NONE,
-                inactive_threshold=1.0,
-            ),
-        )
-        try:
-            raw_events: list[HistoryEvent] = []
-            try:
-                while True:
-                    messages = await subscription.fetch(batch=256, timeout=0.25)
-                    raw_events.extend(history_decoder(msg.data) for msg in messages if msg.data)
-            except (TimeoutError, FetchTimeoutError):
-                pass
-        finally:
-            await subscription.unsubscribe()
+        raw_events = await NatsHistoryAPI(jetstream, MsgspecCodec()).get_run_history(wf_id, run_id)
 
         matches = [
             event

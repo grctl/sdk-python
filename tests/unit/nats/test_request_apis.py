@@ -12,6 +12,7 @@ from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 from grctl.nats.worker_api import NatsWorkerAPI
 from grctl.nats.workflow_api import NatsWorkflowAPI
+from grctl.settings import get_settings
 
 
 class FakeCoreClient:
@@ -53,6 +54,35 @@ async def test_worker_api_retries_a_core_request_timeout(monkeypatch: pytest.Mon
     assert response.success is True
     assert [subject for subject, _, _ in client.calls] == [manifest.worker_command_subject()] * 2
     assert sleeps == [0.5]
+
+
+async def test_worker_api_uses_environment_configured_registration_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_NATS_REQUEST_TIMEOUT", "7.5")
+    monkeypatch.setenv("ENGINE_NATS_WORKER_REGISTRATION_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("ENGINE_NATS_WORKER_REGISTRATION_RETRY_BASE_DELAY_SECONDS", "0.2")
+    get_settings.cache_clear()
+
+    client = FakeCoreClient(
+        [
+            TimeoutError("request timed out"),
+            response_bytes(GrctlAPIResponse(success=True)),
+        ]
+    )
+    api = NatsWorkerAPI(client, MsgspecCodec())
+    sleeps: list[float] = []
+
+    async def record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr("grctl.nats.worker_api.asyncio.sleep", record_sleep)
+    try:
+        response = await api.register_worker("worker-1", [])
+    finally:
+        get_settings.cache_clear()
+
+    assert response.success is True
+    assert [timeout for _, _, timeout in client.calls] == [7.5, 7.5]
+    assert sleeps == [0.2]
 
 
 async def test_workflow_api_translates_a_server_rejection() -> None:

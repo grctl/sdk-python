@@ -12,7 +12,6 @@ import contextlib
 import os
 
 import pytest
-from nats.client import connect
 from nats.jetstream import new as new_jetstream
 
 from grctl.client import Client
@@ -29,15 +28,12 @@ async def nats_connection():
     # Bypass the Connection singleton so each test gets a truly independent
     # NATS client. The singleton causes races when fixture teardown (drain)
     # and the next test's setup interleave on the shared event loop.
-    nc = await get_nats_client([SPEC_NATS_URL])
-    js = nc.jetstream()
-    js_client = await connect(SPEC_NATS_URL)
-    jetstream = new_jetstream(js_client)
-    conn = Connection(nc, js, jetstream)
+    client = await get_nats_client([SPEC_NATS_URL])
+    jetstream = new_jetstream(client)
+    conn = Connection(client, jetstream)
     yield conn
     with contextlib.suppress(Exception):
-        if not nc.is_closed:
-            await nc.drain()
+        await client.drain()
 
 
 @pytest.fixture

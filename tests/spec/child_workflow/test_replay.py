@@ -20,6 +20,7 @@ _WORKER_INIT_DELAY = 0.5
 _HISTORY_TIMEOUT = 15.0
 _WORKFLOW_TIMEOUT = timedelta(seconds=120)
 _REPLAY_WORKER_ACK_WAIT_SECONDS = "0.5"
+_REPLAY_PROGRESS_ACK_INTERVAL_SECONDS = "0.1"
 
 
 def _terminate(process: multiprocessing.Process) -> None:
@@ -33,6 +34,7 @@ def _terminate(process: multiprocessing.Process) -> None:
 
 def _configure_fast_replay_redelivery() -> None:
     os.environ.setdefault("ENGINE_NATS_WORKER_ACK_WAIT", _REPLAY_WORKER_ACK_WAIT_SECONDS)
+    os.environ.setdefault("ENGINE_PROGRESS_ACK_INTERVAL_SECONDS", _REPLAY_PROGRESS_ACK_INTERVAL_SECONDS)
 
 
 # ─── ctx.start_child() skip scenario ────────────────────────────────────────────────

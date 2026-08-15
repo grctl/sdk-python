@@ -11,6 +11,7 @@ from grctl.models import HistoryReadError
 from grctl.nats import history_api
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.history_api import NatsHistoryAPI
+from grctl.settings import get_settings
 
 
 class FakeMessageBatch:
@@ -27,8 +28,10 @@ class FakeConsumer:
     def __init__(self, responses: list[list[object] | BaseException]) -> None:
         self.name = "history-reader"
         self._responses = iter(responses)
+        self.fetch_calls: list[dict[str, object]] = []
 
     async def fetch(self, **_kwargs: object) -> FakeMessageBatch:
+        self.fetch_calls.append(_kwargs)
         response = next(self._responses)
         if isinstance(response, BaseException):
             raise response
@@ -92,6 +95,27 @@ async def test_get_run_history_retries_silence_until_target_sequence(monkeypatch
     assert create_args.kwargs["ack_policy"] == "none"
     assert create_args.kwargs["inactive_threshold"].total_seconds() == 1
     jetstream.delete_consumer.assert_awaited_once()
+
+
+async def test_history_api_uses_environment_configured_read_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_NATS_HISTORY_FETCH_BATCH_SIZE", "10")
+    monkeypatch.setenv("ENGINE_NATS_HISTORY_FETCH_TIMEOUT_SECONDS", "0.1")
+    monkeypatch.setenv("ENGINE_NATS_HISTORY_READ_TIMEOUT_SECONDS", "2.0")
+    monkeypatch.setenv("ENGINE_NATS_HISTORY_CONSUMER_INACTIVE_THRESHOLD_SECONDS", "4.0")
+    get_settings.cache_clear()
+
+    consumer = FakeConsumer([[history_message(5, pending=0)]])
+    jetstream = FakeJetStream(5, consumer)
+    monkeypatch.setattr(history_api, "history_decoder", lambda _data: object())
+    try:
+        assert len(await api_for(jetstream).get_run_history("workflow", "run")) == 1
+    finally:
+        get_settings.cache_clear()
+
+    assert consumer.fetch_calls == [{"max_messages": 10, "max_wait": 0.1}]
+    create_args = jetstream.create_consumer.await_args
+    assert create_args is not None
+    assert create_args.kwargs["inactive_threshold"].total_seconds() == 4.0
 
 
 async def test_history_read_raises_when_server_reports_history_ended_before_target(

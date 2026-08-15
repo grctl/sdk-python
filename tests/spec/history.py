@@ -2,14 +2,10 @@
 
 import asyncio
 import time
-from typing import cast
-
-from nats.js.errors import NotFoundError
 
 from grctl.client import Client
-from grctl.models import HistoryEvent, HistoryKind, StepStarted, history_decoder
+from grctl.models import HistoryEvent, HistoryKind, StepStarted
 from grctl.nats.connection import Connection as NatsConnection
-from grctl.nats.manifest import manifest
 
 _POLL_INTERVAL = 0.1
 _DEFAULT_TIMEOUT = 10.0
@@ -67,31 +63,11 @@ class HistoryAccess:
         return await self._client.get_history(self._wf_id, run_id=self._run_id)
 
     async def direct_events(self) -> list[HistoryEvent]:
-        """Return history events without creating a pull consumer."""
-        connection = cast("NatsConnection", self._client._connection)
-        subject = manifest.history_subject(wf_id=self._wf_id, run_id=self._run_id)
-        stream = manifest.history_stream_name()
-        manager = connection.js._jsm
-
-        try:
-            last = await manager.get_last_msg(stream, subject=subject, direct=True)
-        except NotFoundError:
-            return []
-
-        events: list[HistoryEvent] = []
-        next_seq = 1
-        while last.seq is not None and next_seq <= last.seq:
-            try:
-                raw_msg = await manager.get_msg(stream, seq=next_seq, subject=subject, next=True, direct=True)
-            except NotFoundError:
-                break
-            if raw_msg.data:
-                events.append(history_decoder(raw_msg.data))
-            if raw_msg.seq is None:
-                break
-            next_seq = raw_msg.seq + 1
-
-        return events
+        """Return the durable events for this run through the production reader."""
+        connection = self._client._connection
+        if not isinstance(connection, NatsConnection):
+            raise TypeError("HistoryAccess requires a NATS-backed client")
+        return await connection.history_reader.get_run_history(self._wf_id, self._run_id)
 
     async def wait_for_kind(self, kind: HistoryKind) -> tuple[HistoryEvent, list[HistoryEvent]]:
         """Poll until an event of the given kind appears, then return it and all events from that fetch."""

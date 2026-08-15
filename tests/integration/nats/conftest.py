@@ -53,12 +53,11 @@ def unique_wf_type() -> str:
 
 @pytest.fixture
 async def nc() -> AsyncIterator:
-    """nats-py client, used to publish and to drive core NATS request/reply."""
+    """nats-core client used to drive core NATS request/reply."""
     client = await get_nats_client([NATS_URL])
     yield client
     with contextlib.suppress(Exception):
-        if not client.is_closed:
-            await client.drain()
+        await client.drain()
 
 
 @pytest.fixture
@@ -113,23 +112,20 @@ def worker_task_subject(directive: Directive) -> str:
 
 
 @pytest.fixture
-def publish_directive(nc) -> Callable[[Directive], Awaitable[None]]:
-    js = nc.jetstream()
-
+def publish_directive(jetstream) -> Callable[[Directive], Awaitable[None]]:
     async def publish(directive: Directive) -> None:
-        await js.publish(worker_task_subject(directive), directive_encoder(directive))
+        await jetstream.publish(worker_task_subject(directive), directive_encoder(directive))
 
     return publish
 
 
 @pytest.fixture
-def publish_raw(nc) -> Callable[[str, bytes], Awaitable[None]]:
+def publish_raw(jetstream) -> Callable[[str, bytes], Awaitable[None]]:
     """Publish arbitrary bytes to a worker task subject, for decode-failure paths."""
-    js = nc.jetstream()
 
     async def publish(wf_type: str, data: bytes) -> None:
         subject = f"grctl_worker_task.{wf_type}.{ulid.ULID()}.{ulid.ULID()}"
-        await js.publish(subject, data)
+        await jetstream.publish(subject, data)
 
     return publish
 

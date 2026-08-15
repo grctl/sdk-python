@@ -1,10 +1,9 @@
 import logging
 from collections.abc import Awaitable, Callable
 
-from nats.aio.client import Client as NATSClient
+from nats.client import Client as CoreNATSClient
 from nats.jetstream import JetStream
 from nats.jetstream import new as new_jetstream
-from nats.js.client import JetStreamContext
 
 from grctl.logging_config import get_logger
 from grctl.models import Command, RunInfo
@@ -14,7 +13,7 @@ from grctl.nats.directive_api import NatsDirectiveAPI
 from grctl.nats.history_api import NatsHistoryAPI
 from grctl.nats.history_subscriber import NatsHistoryListenerFactory
 from grctl.nats.kv_api import NatsKVApi
-from grctl.nats.nats_client import get_core_nats_client, get_nats_client
+from grctl.nats.nats_client import get_nats_client
 from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
 from grctl.nats.worker_api import NatsWorkerAPI
 from grctl.nats.workflow_api import NatsWorkflowAPI
@@ -37,18 +36,16 @@ class Connection:
 
     def __init__(
         self,
-        nc: NATSClient,
-        js: JetStreamContext,
+        client: CoreNATSClient,
         jetstream: JetStream,
         serializers: SerializerRegistry | None = None,
     ) -> None:
-        self._nc = nc
-        self._js = js
+        self._client = client
         self._jetstream = jetstream
         self._codec = MsgspecCodec(serializers)
 
         self._history = NatsHistoryAPI(self._jetstream, self._codec)
-        self._listener_factory = NatsHistoryListenerFactory(self._nc)
+        self._listener_factory = NatsHistoryListenerFactory(self._jetstream)
         self._workflow_api = NatsWorkflowAPI(self._jetstream.client, self._codec)
         self._worker_api = NatsWorkerAPI(self._jetstream.client, self._codec)
 
@@ -63,31 +60,21 @@ class Connection:
             servers = get_settings().nats_servers
 
         try:
-            nc = await get_nats_client(servers)
-            js = nc.jetstream()
-            js_client = await get_core_nats_client(servers)
-            jetstream = new_jetstream(js_client)
+            client = await get_nats_client(servers)
+            jetstream = new_jetstream(client)
 
             logger.debug("NATS connection established and components initialized")
         except Exception:
             logger.exception("Failed to establish Connection")
             raise
 
-        instance = cls(nc, js, jetstream, serializers)
+        instance = cls(client, jetstream, serializers)
         cls._instance = instance
         return instance
 
     @classmethod
     def reset(cls) -> None:
         cls._instance = None
-
-    @property
-    def nc(self) -> NATSClient:
-        return self._nc
-
-    @property
-    def js(self) -> JetStreamContext:
-        return self._js
 
     @property
     def jetstream(self) -> JetStream:
@@ -98,8 +85,7 @@ class Connection:
         return self._codec
 
     async def close(self) -> None:
-        await self._jetstream.client.drain()
-        await self._nc.drain()
+        await self._client.drain()
         logger.debug("Connection closed")
 
     @property
@@ -119,10 +105,10 @@ class Connection:
         return self._listener_factory
 
     def build_kv_api(self, run_info: RunInfo) -> NatsKVApi:
-        return NatsKVApi(self._js, run_info)
+        return NatsKVApi(self._jetstream, run_info)
 
     def build_directive_api(self, run_info: RunInfo) -> NatsDirectiveAPI:
-        return NatsDirectiveAPI(self._js, run_info, enc_hook=self._codec.enc_hook)
+        return NatsDirectiveAPI(self._jetstream, run_info, enc_hook=self._codec.enc_hook)
 
     def build_worker_cmd_listener(
         self, worker_id: str, handler: Callable[[Command], Awaitable[bool]]

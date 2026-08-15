@@ -24,7 +24,6 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "nats-py>=2.15.0",
     "msgspec>=0.18.0",
     "python-ulid>=2.0.0",
     "pydantic-settings>=2.11.0",

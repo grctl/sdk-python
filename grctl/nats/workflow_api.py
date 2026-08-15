@@ -21,8 +21,7 @@ from grctl.models.errors import error_for_code
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
 from grctl.nats.nats_client import CoreRequestClient
-
-_REQUEST_TIMEOUT_SECONDS = 5.0
+from grctl.settings import get_settings
 
 
 class NatsWorkflowAPI:
@@ -35,6 +34,7 @@ class NatsWorkflowAPI:
     def __init__(self, nc: CoreRequestClient, codec: MsgspecCodec) -> None:
         self._nc = nc
         self._codec = codec
+        self._settings = get_settings()
 
     async def start_run(self, run_info: RunInfo, input: Any, sender_id: str) -> None:  # noqa: A002
         msg = StartCmd(run_info=run_info, input=input)
@@ -65,7 +65,7 @@ class NatsWorkflowAPI:
         cmd = Command(id=str(ULID()), kind=kind, timestamp=datetime.now(UTC), msg=msg, sender_id=sender_id)
         subject = manifest.api_subject(wf_id=wf_id)
         data = command_encoder(cmd, enc_hook=self._codec.enc_hook)
-        reply = await self._nc.request(subject, data, timeout=_REQUEST_TIMEOUT_SECONDS)
+        reply = await self._nc.request(subject, data, timeout=self._settings.nats_request_timeout)
         response = msgspec.msgpack.decode(reply.data, type=GrctlAPIResponse)
         if not response.success:
             error = response.error

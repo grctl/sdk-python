@@ -1,16 +1,19 @@
+import asyncio
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from datetime import timedelta
+from typing import TYPE_CHECKING, cast
 
-from nats.aio.client import Client as NATSClient
-from nats.aio.msg import Msg
-from nats.js.api import DeliverPolicy
+from nats.jetstream import JetStream
+from nats.jetstream.message import Message
+from ulid import ULID
 
 from grctl.logging_config import get_logger
 from grctl.models import HistoryEvent, RunInfo, history_decoder
 from grctl.nats.manifest import manifest
+from grctl.settings import get_settings
 
 if TYPE_CHECKING:
-    from nats.aio.subscription import Subscription
+    from nats.jetstream.consumer.pull import PullConsumer
 
 logger = get_logger(__name__)
 
@@ -31,17 +34,17 @@ class HistorySubscriber:
 
     def __init__(
         self,
-        nc: NATSClient,
+        jetstream: JetStream,
         wf_id: str,
         run_id: str,
         handler: Callable[[HistoryEvent], None],
     ) -> None:
-        self._nc = nc
-        self._js = nc.jetstream()
+        self._jetstream = jetstream
         self._history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
         self._history_stream = manifest.history_stream_name()
         self._handler = handler
-        self._subscription: Subscription | None = None
+        self._consumer: PullConsumer | None = None
+        self._consume_task: asyncio.Task[None] | None = None
         # Whether this listener has ever run, as distinct from whether it is running now:
         # stopping is terminal, so the two answers differ and only one of them gates start().
         self._started = False
@@ -54,22 +57,51 @@ class HistorySubscriber:
             raise RuntimeError(f"History listener for {self._history_subject} was already started")
         self._started = True
 
-        self._subscription = await self._js.subscribe(
-            self._history_subject,
-            stream=self._history_stream,
-            cb=self._on_message,
-            manual_ack=True,
-            deliver_policy=DeliverPolicy.LAST,
+        self._consumer = cast(
+            "PullConsumer",
+            await self._jetstream.create_consumer(
+                self._history_stream,
+                name=f"history-listener-{ULID()}",
+                filter_subject=self._history_subject,
+                deliver_policy="last",
+                ack_policy="explicit",
+                inactive_threshold=timedelta(seconds=30),
+            ),
         )
+        self._consume_task = asyncio.create_task(self._consume())
         logger.debug("Subscribed to history subject %s", self._history_subject)
 
     async def stop(self) -> None:
-        if self._subscription is not None:
-            await self._subscription.unsubscribe()
-            self._subscription = None
+        consume_task, self._consume_task = self._consume_task, None
+        consumer, self._consumer = self._consumer, None
+
+        if consume_task is not None:
+            consume_task.cancel()
+            await asyncio.gather(consume_task, return_exceptions=True)
+
+        if consumer is not None:
+            await self._jetstream.delete_consumer(self._history_stream, consumer.name)
             logger.debug("Unsubscribed from history subject %s", self._history_subject)
 
-    async def _on_message(self, msg: Msg) -> None:
+    async def _consume(self) -> None:
+        consumer = self._consumer
+        if consumer is None:
+            raise RuntimeError("History listener started without a consumer")
+        while True:
+            try:
+                batch = await consumer.fetch(max_messages=1)
+                async for msg in batch:
+                    await self._on_message(msg)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "History subscription fetch failed subject=%s; retrying",
+                    self._history_subject,
+                )
+                await asyncio.sleep(get_settings().nats_reconnect_time_wait)
+
+    async def _on_message(self, msg: Message) -> None:
         try:
             event: HistoryEvent = history_decoder(msg.data)
             self._handler(event)
@@ -85,12 +117,12 @@ class HistorySubscriber:
 class NatsHistoryListenerFactory:
     """Builds a HistorySubscriber for a run, satisfying HistoryListenerFactory."""
 
-    def __init__(self, nc: NATSClient) -> None:
-        self.nc = nc
+    def __init__(self, jetstream: JetStream) -> None:
+        self._jetstream = jetstream
 
     def create(self, run_info: RunInfo, handler: Callable[[HistoryEvent], None]) -> HistorySubscriber:
         return HistorySubscriber(
-            nc=self.nc,
+            jetstream=self._jetstream,
             wf_id=run_info.wf_id,
             run_id=run_info.id,
             handler=handler,

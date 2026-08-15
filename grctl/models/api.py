@@ -1,12 +1,12 @@
 import msgspec
 
-_NIL_PAYLOAD = msgspec.msgpack.encode(None)
 """Encoded nil, used as the empty payload.
 
 msgspec.Raw is spliced into the output verbatim, so an empty Raw contributes no
 bytes at all and produces a map whose header promises more pairs than it holds —
 unparseable by any client. The default has to be a valid encoding of something.
 """
+_NIL_PAYLOAD = msgspec.msgpack.encode(None)
 
 
 class GrctlAPIError(msgspec.Struct):

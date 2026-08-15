@@ -17,6 +17,7 @@ from grctl.logging_config import get_logger
 from grctl.models import ErrorDetails, HistoryKind, TaskCompleted, TaskFailed
 from grctl.models.directive import RetryPolicy
 from grctl.models.history import HistoryEvents, TaskAttemptFailed, TaskCancelled, TaskStarted
+from grctl.settings import get_settings
 
 if TYPE_CHECKING:
     from grctl.exec.context import Context
@@ -24,10 +25,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _ACCEPTABLE_KINDS = frozenset({HistoryKind.task_completed, HistoryKind.task_failed, HistoryKind.task_cancelled})
-
-_DEFAULT_INITIAL_DELAY_MS = 100
-_DEFAULT_BACKOFF_MULTIPLIER = 2.0
-_DEFAULT_MAX_DELAY_MS = 5000
 
 _current_context: ContextVar[Context | None] = ContextVar("grctl_context", default=None)
 
@@ -151,9 +148,10 @@ def _is_retryable(error: Exception, policy: RetryPolicy) -> bool:
 
 
 def _backoff_delay_ms(policy: RetryPolicy, attempt: int) -> int:
-    initial = policy.initial_delay_ms or _DEFAULT_INITIAL_DELAY_MS
-    multiplier = policy.backoff_multiplier or _DEFAULT_BACKOFF_MULTIPLIER
-    max_delay = policy.max_delay_ms or _DEFAULT_MAX_DELAY_MS
+    settings = get_settings()
+    initial = policy.initial_delay_ms or settings.task_retry_initial_delay_ms
+    multiplier = policy.backoff_multiplier or settings.task_retry_backoff_multiplier
+    max_delay = policy.max_delay_ms or settings.task_retry_max_delay_ms
     jitter = policy.jitter or 0.0
 
     delay = min(initial * (multiplier ** (attempt - 1)), max_delay)

@@ -59,20 +59,18 @@ def make_event(wf_id: str, run_id: str) -> HistoryEvent:
 
 
 @pytest.fixture
-def publish_event(nc) -> Callable[[HistoryEvent], Awaitable[None]]:
-    js = nc.jetstream()
-
+def publish_event(jetstream) -> Callable[[HistoryEvent], Awaitable[None]]:
     async def publish(event: HistoryEvent) -> None:
         subject = manifest.history_subject(wf_id=event.wf_id, run_id=event.run_id)
-        await js.publish(subject, history_encoder(event))
+        await jetstream.publish(subject, history_encoder(event))
 
     return publish
 
 
-async def test_published_event_reaches_the_handler(nc, run_ids, publish_event) -> None:
+async def test_published_event_reaches_the_handler(jetstream, run_ids, publish_event) -> None:
     wf_id, run_id = run_ids
     recorder = EventRecorder()
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=recorder)
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=recorder)
     await subscriber.start()
 
     await publish_event(make_event(wf_id, run_id))
@@ -86,7 +84,7 @@ async def test_published_event_reaches_the_handler(nc, run_ids, publish_event) -
     await subscriber.stop()
 
 
-async def test_a_late_subscriber_still_sees_the_runs_latest_event(nc, run_ids, publish_event) -> None:
+async def test_a_late_subscriber_still_sees_the_runs_latest_event(jetstream, run_ids, publish_event) -> None:
     """Joining after an event was published must still deliver it.
 
     This is what lets a handle attach to a run that already finished and still settle on
@@ -97,7 +95,7 @@ async def test_a_late_subscriber_still_sees_the_runs_latest_event(nc, run_ids, p
     await publish_event(make_event(wf_id, run_id))
 
     recorder = EventRecorder()
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=recorder)
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=recorder)
     await subscriber.start()
 
     await asyncio.wait_for(recorder.received.wait(), timeout=DELIVERY_TIMEOUT_SECONDS)
@@ -106,7 +104,7 @@ async def test_a_late_subscriber_still_sees_the_runs_latest_event(nc, run_ids, p
     await subscriber.stop()
 
 
-async def test_starting_twice_is_an_error(nc, run_ids) -> None:
+async def test_starting_twice_is_an_error(jetstream, run_ids) -> None:
     """A listener belongs to one owner and runs once; a second start is a caller's bug.
 
     Tolerating it would hide the loss of track quietly, as a duplicated event stream or a
@@ -114,7 +112,7 @@ async def test_starting_twice_is_an_error(nc, run_ids) -> None:
     after a stop is the same mistake and fails the same way.
     """
     wf_id, run_id = run_ids
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=EventRecorder())
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=EventRecorder())
     await subscriber.start()
 
     with pytest.raises(RuntimeError, match="already started"):
@@ -125,7 +123,7 @@ async def test_starting_twice_is_an_error(nc, run_ids) -> None:
         await subscriber.start()
 
 
-async def test_two_subscribers_on_one_run_each_receive_every_event(nc, run_ids, publish_event) -> None:
+async def test_two_subscribers_on_one_run_each_receive_every_event(jetstream, run_ids, publish_event) -> None:
     """Two watchers of the same run are wholly independent.
 
     Two clients may hold handles on one workflow, and each gets its own listener. They
@@ -135,7 +133,8 @@ async def test_two_subscribers_on_one_run_each_receive_every_event(nc, run_ids, 
     wf_id, run_id = run_ids
     first, second = EventRecorder(), EventRecorder()
     subscribers = [
-        HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=recorder) for recorder in (first, second)
+        HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=recorder)
+        for recorder in (first, second)
     ]
     for subscriber in subscribers:
         await subscriber.start()
@@ -159,11 +158,11 @@ async def test_two_subscribers_on_one_run_each_receive_every_event(nc, run_ids, 
     await subscribers[1].stop()
 
 
-async def test_handler_failure_does_not_break_the_subscription(nc, run_ids, publish_event) -> None:
+async def test_handler_failure_does_not_break_the_subscription(jetstream, run_ids, publish_event) -> None:
     """One malformed or mishandled event must not deafen the client to the rest."""
     wf_id, run_id = run_ids
     recorder = EventRecorder(fail_first=True)
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=recorder)
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=recorder)
     await subscriber.start()
 
     await publish_event(make_event(wf_id, run_id))
@@ -175,10 +174,10 @@ async def test_handler_failure_does_not_break_the_subscription(nc, run_ids, publ
     await subscriber.stop()
 
 
-async def test_stop_ends_delivery(nc, run_ids, publish_event) -> None:
+async def test_stop_ends_delivery(jetstream, run_ids, publish_event) -> None:
     wf_id, run_id = run_ids
     recorder = EventRecorder()
-    subscriber = HistorySubscriber(nc=nc, wf_id=wf_id, run_id=run_id, handler=recorder)
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=recorder)
     await subscriber.start()
     await subscriber.stop()
 
@@ -186,3 +185,12 @@ async def test_stop_ends_delivery(nc, run_ids, publish_event) -> None:
     await asyncio.sleep(SETTLE_SECONDS)
 
     assert recorder.events == []
+
+
+async def test_concurrent_stops_delete_the_consumer_once(jetstream, run_ids) -> None:
+    """A completed future and its owner may stop the same listener concurrently."""
+    wf_id, run_id = run_ids
+    subscriber = HistorySubscriber(jetstream=jetstream, wf_id=wf_id, run_id=run_id, handler=EventRecorder())
+    await subscriber.start()
+
+    await asyncio.gather(subscriber.stop(), subscriber.stop())

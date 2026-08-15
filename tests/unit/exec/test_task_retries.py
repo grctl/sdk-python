@@ -17,6 +17,7 @@ from grctl.exec.task import AttemptFailed, Cancelled, Failed, RetryRunner, Succe
 from grctl.models import HistoryKind
 from grctl.models.directive import RetryPolicy
 from grctl.models.history import TaskAttemptFailed, TaskCompleted, TaskStarted
+from grctl.settings import get_settings
 from tests.unit.exec.fakes import DEFAULT_RUN_INFO, DEFAULT_WORKER_ID, FakeAppender, make_context
 
 _IMMEDIATE = RetryPolicy(max_attempts=3, initial_delay_ms=1, backoff_multiplier=1.0)
@@ -203,6 +204,19 @@ def test_backoff_is_capped_at_max_delay() -> None:
     policy = RetryPolicy(initial_delay_ms=100, backoff_multiplier=10.0, max_delay_ms=500)
 
     assert [_backoff_delay_ms(policy, n) for n in (1, 2, 3)] == [100, 500, 500]
+
+
+def test_backoff_uses_environment_configured_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_TASK_RETRY_INITIAL_DELAY_MS", "200")
+    monkeypatch.setenv("ENGINE_TASK_RETRY_BACKOFF_MULTIPLIER", "3.0")
+    monkeypatch.setenv("ENGINE_TASK_RETRY_MAX_DELAY_MS", "1000")
+    get_settings.cache_clear()
+
+    try:
+        policy = RetryPolicy()
+        assert [_backoff_delay_ms(policy, n) for n in (1, 2, 3)] == [200, 600, 1000]
+    finally:
+        get_settings.cache_clear()
 
 
 # --- The task as a journal operation: what a retried task leaves in history ---

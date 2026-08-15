@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 
 [[package]]
@@ -85,7 +85,6 @@ dependencies = [
     { name = "msgspec" },
     { name = "nats-core" },
     { name = "nats-jetstream" },
-    { name = "nats-py" },
     { name = "nkeys" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -107,7 +106,6 @@ requires-dist = [
     { name = "msgspec", specifier = ">=0.18.0" },
     { name = "nats-core", specifier = ">=0.2.0" },
     { name = "nats-jetstream", specifier = ">=0.3.0" },
-    { name = "nats-py", specifier = ">=2.15.0" },
     { name = "nkeys", specifier = ">=0.2.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
@@ -270,15 +268,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1d/e0/1d4e8aeb510238f895bc8f9f2e65a02a4a3aeadca361cbef876e89dfe4a0/nats_jetstream-0.3.0.tar.gz", hash = "sha256:e76657a9cf34e17dbf47fa092401eb626aa4e720812f982a4963cb84b520d072", size = 48591, upload-time = "2026-05-10T12:54:39.884Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/84/f5/59bb499ac8053e0343e504cfd382a6cc3b281b9e67627c6cd6d850c14a01/nats_jetstream-0.3.0-py3-none-any.whl", hash = "sha256:5ff60b2674bdf7cb5ec01fcddc81b6ffe8c37310cc4130c6aee2aad208f68e54", size = 54936, upload-time = "2026-05-10T12:54:41.193Z" },
-]
-
-[[package]]
-name = "nats-py"
-version = "2.15.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/02/f0/fc5e93f2b0dd14a202590ad9d30eda1955ea872039b5204357348d0f4b1e/nats_py-2.15.0.tar.gz", hash = "sha256:6622c547d9a7d2313d9c147d46c386188f4ec2c7b5c9f9a0438a4d1b55f54a93", size = 75995, upload-time = "2026-06-05T07:34:03.904Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/a8/b55606c7c621fb813c8ec78baf201d2c78bf6051091ec0c7ada572999e95/nats_py-2.15.0-py3-none-any.whl", hash = "sha256:9f8d36aa52a9926a88b8f1d70cf1fdce0ad387941479b500ee9ab3e51073cefd", size = 90334, upload-time = "2026-06-05T07:34:02.81Z" },
 ]
 
 [[package]]

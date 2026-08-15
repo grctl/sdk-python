@@ -18,15 +18,12 @@ from grctl.models import (
 )
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
+from grctl.settings import EngineSettings, get_settings
 
 if TYPE_CHECKING:
     from nats.jetstream.consumer.pull import PullConsumer
 
 logger = logging.getLogger(__name__)
-
-_FETCH_BATCH_SIZE = 256
-_FETCH_TIMEOUT_SECONDS = 0.25
-_READ_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass
@@ -36,14 +33,16 @@ class HistoryReadProgress:
     run_id: str
     target_sequence: int
     started_at: float
+    fetch_timeout_seconds: float
+    read_timeout_seconds: float
     events: list[HistoryEvent] = field(default_factory=list)
     reached_sequence: int | None = None
 
     def fetch_timeout(self) -> float:
-        remaining = _READ_TIMEOUT_SECONDS - self.elapsed
+        remaining = self.read_timeout_seconds - self.elapsed
         if remaining <= 0:
             self.raise_incomplete("timed out")
-        return min(_FETCH_TIMEOUT_SECONDS, remaining)
+        return min(self.fetch_timeout_seconds, remaining)
 
     @property
     def elapsed(self) -> float:
@@ -93,15 +92,16 @@ class NatsHistoryAPI:
 
     async def read(self, wf_id: str, run_id: str, start_sequence: int | None = None) -> list[HistoryEvent]:
         """Read a complete, fixed history prefix or fail without returning it."""
+        settings = get_settings()
         history_subject = manifest.history_subject(wf_id=wf_id, run_id=run_id)
         history_stream = manifest.history_stream_name()
         target_sequence = await self.target_sequence(history_stream, history_subject)
         if target_sequence is None:
             return []
 
-        consumer = await self.new_consumer(history_stream, history_subject, run_id, start_sequence)
+        consumer = await self.new_consumer(history_stream, history_subject, run_id, start_sequence, settings)
         try:
-            return await self.collect(consumer, target_sequence, run_id)
+            return await self.collect(consumer, target_sequence, run_id, settings)
         finally:
             await self.jetstream.delete_consumer(history_stream, consumer.name)
 
@@ -112,7 +112,14 @@ class NatsHistoryAPI:
             return None
         return last_message.sequence
 
-    async def new_consumer(self, stream: str, subject: str, run_id: str, start_sequence: int | None) -> "PullConsumer":
+    async def new_consumer(
+        self,
+        stream: str,
+        subject: str,
+        run_id: str,
+        start_sequence: int | None,
+        settings: EngineSettings,
+    ) -> "PullConsumer":
         return cast(
             "PullConsumer",
             await self.jetstream.create_consumer(
@@ -122,15 +129,23 @@ class NatsHistoryAPI:
                 deliver_policy="all" if start_sequence is None else "by_start_sequence",
                 opt_start_seq=start_sequence,
                 ack_policy="none",
-                inactive_threshold=timedelta(seconds=1),
+                inactive_threshold=timedelta(seconds=settings.nats_history_consumer_inactive_threshold_seconds),
             ),
         )
 
-    async def collect(self, consumer: "PullConsumer", target_sequence: int, run_id: str) -> list[HistoryEvent]:
-        progress = HistoryReadProgress(run_id, target_sequence, time.monotonic())
+    async def collect(
+        self, consumer: "PullConsumer", target_sequence: int, run_id: str, settings: EngineSettings
+    ) -> list[HistoryEvent]:
+        progress = HistoryReadProgress(
+            run_id,
+            target_sequence,
+            time.monotonic(),
+            settings.nats_history_fetch_timeout_seconds,
+            settings.nats_history_read_timeout_seconds,
+        )
         while True:
             max_wait = progress.fetch_timeout()
-            messages = await self.fetch(consumer, max_wait, run_id)
+            messages = await self.fetch(consumer, settings.nats_history_fetch_batch_size, max_wait, run_id)
             if messages is None:
                 continue
 
@@ -149,9 +164,9 @@ class NatsHistoryAPI:
                 progress.raise_incomplete("server reported no pending messages")
 
     @staticmethod
-    async def fetch(consumer: "PullConsumer", max_wait: float, run_id: str) -> list[Message] | None:
+    async def fetch(consumer: "PullConsumer", max_messages: int, max_wait: float, run_id: str) -> list[Message] | None:
         try:
-            message_batch = await consumer.fetch(max_messages=_FETCH_BATCH_SIZE, max_wait=max_wait)
+            message_batch = await consumer.fetch(max_messages=max_messages, max_wait=max_wait)
             messages = [message async for message in message_batch]
         except Exception:
             logger.warning("History read fetch failed; retrying run=%s", run_id, exc_info=True)

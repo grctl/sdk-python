@@ -208,8 +208,11 @@ class Subscriber:
     async def _send_ack_progress(self, msg: Message) -> None:
         seconds = self.settings.progress_ack_interval_seconds
         while True:
+            try:
+                await msg.in_progress()
+            except Exception:
+                self.logger.exception("Failed to send in-progress ack")
             await asyncio.sleep(seconds)
-            await msg.in_progress()
 
     async def stop(self) -> None:
         for task in self._consume_tasks:
