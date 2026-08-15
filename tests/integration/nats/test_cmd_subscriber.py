@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import msgspec
 import pytest
 import ulid
-from nats.errors import NoRespondersError
+from nats.client.errors import NoRespondersError
 
 from grctl.models import CmdKind, Command, DescribeCmd, GrctlAPIResponse, command_encoder
 from grctl.nats.cmd_subscriber import WorkerCmdSubscriber
@@ -48,7 +48,7 @@ def make_command() -> Command:
 
 
 @pytest.fixture
-async def start_cmd_subscriber(nc, worker_id) -> AsyncIterator[Callable]:
+async def start_cmd_subscriber(jetstream, worker_id) -> AsyncIterator[Callable]:
     """Start a subscriber and wait for the server to register it.
 
     Without the flush a request can outrun its own subscription and come back as
@@ -57,9 +57,9 @@ async def start_cmd_subscriber(nc, worker_id) -> AsyncIterator[Callable]:
     started: list[WorkerCmdSubscriber] = []
 
     async def start(handler) -> WorkerCmdSubscriber:
-        subscriber = WorkerCmdSubscriber(nc=nc, worker_id=worker_id, handler=handler)
+        subscriber = WorkerCmdSubscriber(nc=jetstream.client, worker_id=worker_id, handler=handler)
         await subscriber.start()
-        await nc.flush()
+        await jetstream.client.flush()
         started.append(subscriber)
         return subscriber
 
@@ -70,9 +70,9 @@ async def start_cmd_subscriber(nc, worker_id) -> AsyncIterator[Callable]:
 
 
 @pytest.fixture
-def request_command(nc, worker_id) -> Callable:
+def request_command(jetstream, worker_id) -> Callable:
     async def send(payload: bytes) -> GrctlAPIResponse:
-        reply = await nc.request(
+        reply = await jetstream.client.request(
             manifest.worker_cmd_subject(worker_id),
             payload,
             timeout=REQUEST_TIMEOUT_SECONDS,
@@ -116,14 +116,25 @@ async def test_undecodable_command_is_rejected_without_reaching_handler(start_cm
     assert recorder.commands == []
 
 
-async def test_stop_unsubscribes_from_the_command_channel(nc, start_cmd_subscriber, request_command) -> None:
+async def test_stop_unsubscribes_from_the_command_channel(jetstream, start_cmd_subscriber, request_command) -> None:
     recorder = CommandRecorder(accepts=True)
     subscriber = await start_cmd_subscriber(recorder)
 
     await subscriber.stop()
-    await nc.flush()
+    await jetstream.client.flush()
 
     with pytest.raises(NoRespondersError):
         await request_command(command_encoder(make_command()))
 
     assert recorder.commands == []
+
+
+async def test_handler_failure_is_reported_to_caller(start_cmd_subscriber, request_command) -> None:
+    async def broken_handler(command: Command) -> bool:
+        raise RuntimeError("handler failed")
+
+    await start_cmd_subscriber(broken_handler)
+
+    response = await request_command(command_encoder(make_command()))
+
+    assert response.success is False

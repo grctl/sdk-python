@@ -2,7 +2,6 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from nats.aio.client import Client as NATSClient
-from nats.client import connect
 from nats.jetstream import JetStream
 from nats.jetstream import new as new_jetstream
 from nats.js.client import JetStreamContext
@@ -15,7 +14,7 @@ from grctl.nats.directive_api import NatsDirectiveAPI
 from grctl.nats.history_api import NatsHistoryAPI
 from grctl.nats.history_subscriber import NatsHistoryListenerFactory
 from grctl.nats.kv_api import NatsKVApi
-from grctl.nats.nats_client import get_nats_client
+from grctl.nats.nats_client import get_core_nats_client, get_nats_client
 from grctl.nats.wf_subscriber import DirectiveHandler, Subscriber
 from grctl.nats.worker_api import NatsWorkerAPI
 from grctl.nats.workflow_api import NatsWorkflowAPI
@@ -50,8 +49,8 @@ class Connection:
 
         self._history = NatsHistoryAPI(self._jetstream, self._codec)
         self._listener_factory = NatsHistoryListenerFactory(self._nc)
-        self._workflow_api = NatsWorkflowAPI(self._nc, self._codec)
-        self._worker_api = NatsWorkerAPI(self._nc, self._codec)
+        self._workflow_api = NatsWorkflowAPI(self._jetstream.client, self._codec)
+        self._worker_api = NatsWorkerAPI(self._jetstream.client, self._codec)
 
     @classmethod
     async def connect(
@@ -66,13 +65,7 @@ class Connection:
         try:
             nc = await get_nats_client(servers)
             js = nc.jetstream()
-            settings = get_settings()
-            js_client = await connect(
-                servers[0],
-                reconnect_max_attempts=0,
-                reconnect_time_wait=settings.nats_reconnect_time_wait,
-                reconnect_timeout=settings.nats_connect_timeout,
-            )
+            js_client = await get_core_nats_client(servers)
             jetstream = new_jetstream(js_client)
 
             logger.debug("NATS connection established and components initialized")
@@ -105,6 +98,7 @@ class Connection:
         return self._codec
 
     async def close(self) -> None:
+        await self._jetstream.client.drain()
         await self._nc.drain()
         logger.debug("Connection closed")
 
@@ -133,7 +127,7 @@ class Connection:
     def build_worker_cmd_listener(
         self, worker_id: str, handler: Callable[[Command], Awaitable[bool]]
     ) -> WorkerCmdSubscriber:
-        return WorkerCmdSubscriber(self._nc, worker_id, handler)
+        return WorkerCmdSubscriber(self._jetstream.client, worker_id, handler)
 
     def build_exec_job_listener(
         self, wf_types: list[str], directive_handler: DirectiveHandler, logger: logging.Logger

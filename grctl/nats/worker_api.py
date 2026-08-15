@@ -2,7 +2,6 @@ import asyncio
 from datetime import UTC, datetime
 
 import msgspec
-from nats.aio.client import Client as NATSClient
 from ulid import ULID
 
 from grctl.logging_config import get_logger
@@ -16,6 +15,7 @@ from grctl.models import (
 )
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
+from grctl.nats.nats_client import CoreRequestClient
 
 logger = get_logger(__name__)
 
@@ -33,7 +33,7 @@ class NatsWorkerAPI:
     Builds the Command envelope and routes it; the domain passes only its intent.
     """
 
-    def __init__(self, nc: NATSClient, codec: MsgspecCodec) -> None:
+    def __init__(self, nc: CoreRequestClient, codec: MsgspecCodec) -> None:
         self._nc = nc
         self._codec = codec
 

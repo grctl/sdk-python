@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import msgspec
-from nats.aio.client import Client as NATSClient
 from ulid import ULID
 
 from grctl.models import (
@@ -21,6 +20,7 @@ from grctl.models.command import CommandMessage
 from grctl.models.errors import error_for_code
 from grctl.nats.codec import MsgspecCodec
 from grctl.nats.manifest import manifest
+from grctl.nats.nats_client import CoreRequestClient
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
 
@@ -32,7 +32,7 @@ class NatsWorkflowAPI:
     domain passes only its intent (target + payload + who is asking).
     """
 
-    def __init__(self, nc: NATSClient, codec: MsgspecCodec) -> None:
+    def __init__(self, nc: CoreRequestClient, codec: MsgspecCodec) -> None:
         self._nc = nc
         self._codec = codec
 
