@@ -65,33 +65,17 @@ class Execution:
         deps: ExecutionDeps,
         logger: Logger,
     ) -> None:
+        self.deps = deps
         self.run_info = directive.run_info
         self.worker_info = worker_info
         self.directive = directive
         self.handler_config = handler_config
-        self.childs = ChildTracker()
         self.started_at = datetime.now(UTC)
         self.kvman = deps.kvman
-        self.step_history = deps.step_history or []
-        self.history_appender = deps.history_appender
         self.directive_api = deps.directive_api
         self.codec = deps.codec
         self.logger = logger
         self.step_directive_factory = DrcFactory(self.run_info, worker_info.id, directive, deps.step_infos)
-        self.journal = Journal(self.step_history, self.history_appender)
-        self.context = Context(
-            self.journal,
-            self.run_info,
-            worker_info.id,
-            self.step_name,
-            self.step_directive_factory,
-            self.kvman,
-            deps.workflow_api,
-            deps.handle_factory,
-            self.childs,
-            deps.codec,
-            self.parent_run,
-        )
 
         # Async task for step execution
         self.task: asyncio.Task
@@ -109,14 +93,16 @@ class Execution:
         # server's decision, not ours.
         outcome_directive: Directive | None = None
         context_token = None
+        childs: ChildTracker | None = None
         try:
             self.is_executing = True
-            context_token = set_current_context(self.context)
+            context, childs = self._build_context()
+            context_token = set_current_context(context)
             payload = self.get_serialised_handler_payload()
             if payload is None:
-                outcome_directive = await handler(self.context)
+                outcome_directive = await handler(context)
             else:
-                outcome_directive = await handler(self.context, **payload)
+                outcome_directive = await handler(context, **payload)
         except Exception as e:
             stack_trace = traceback.format_exc()
             self.logger.exception(f"Workflow execution failed for {self.step_name}")
@@ -130,9 +116,29 @@ class Execution:
             self.is_executing = False
             # Always release child handles started in this step, even when the handler
             # raised, so an unawaited future never warns or leaks its subscription.
-            await self.childs.discard_all()
+            if childs is not None:
+                await childs.discard_all()
             if outcome_directive is not None:
                 await self.send_step_result(outcome_directive)
+
+    def _build_context(self) -> tuple[Context, ChildTracker]:
+        step_history = self.deps.step_history or []
+        childs = ChildTracker()
+        journal = Journal(step_history, self.deps.history_appender)
+        context = Context(
+            journal,
+            self.run_info,
+            self.worker_info.id,
+            self.step_name,
+            self.step_directive_factory,
+            self.kvman,
+            self.deps.workflow_api,
+            self.deps.handle_factory,
+            childs,
+            self.codec,
+            self.parent_run,
+        )
+        return context, childs
 
     async def terminate(self) -> None:
         if self.task is not None:
@@ -167,7 +173,7 @@ class Execution:
 
     async def send_step_picked_up(self) -> None:
         """Announce the step, once. A re-delivered step was already announced by the attempt that died."""
-        if not self.step_history:
+        if not self.deps.step_history:
             drc = self.step_directive_factory.step_picked_up(step_name=self.step_name, timestamp=self.started_at)
             await self.directive_api.send(drc)
 
