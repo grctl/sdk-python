@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 import ulid
 
-from grctl.models import HistoryKind
+from grctl.models import HistoryKind, StepCompleted, StepFailed, StepStarted, StepTimeout
 from grctl.models.errors import WorkflowError
 from tests.spec.history import HistoryAccess
 from tests.spec.workflows import make_blocking_step_workflow
@@ -22,17 +22,11 @@ async def test_step_timeout_emits_timeout_event(worker, grctl_client) -> None:
         timeout=timedelta(seconds=30),
     )
 
-    step_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).wait_for_step(
-        [
-            HistoryKind.step_started,
-            HistoryKind.step_completed,
-            HistoryKind.step_started,  # Second step starts (blocking step)
-            HistoryKind.step_timeout,  # Blocking step times out. There is no step_completed/failed after this.
-        ]
-    )
-
-    timeout_event = step_events[-1]
-    assert timeout_event.kind == HistoryKind.step_timeout
+    history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=15.0)
+    # step.started events are not causally ordered by the server, so wait for
+    # the blocking step itself rather than the global step event sequence.
+    await history.wait_for_step_started("blocking_step")
+    timeout_event, _ = await history.wait_for_kind(HistoryKind.step_timeout)
     assert timeout_event.msg.step_name == "blocking_step"  # ty:ignore[unresolved-attribute]
 
     # Verify the run reached a terminal state (proves the worker was terminated
@@ -41,21 +35,14 @@ async def test_step_timeout_emits_timeout_event(worker, grctl_client) -> None:
         await asyncio.wait_for(handle.future, timeout=15)
 
     # Confirm no step event followed the timeout — the blocking step never completed.
-    final_events = await HistoryAccess(grctl_client, wf_id, handle.run_info.id).events()
-    final_step_events = [
+    final_events = await history.events()
+    blocking_step_kinds = [
         e
         for e in final_events
-        if e.kind
-        in {
-            HistoryKind.step_started,
-            HistoryKind.step_completed,
-            HistoryKind.step_failed,
-            HistoryKind.step_timeout,
-        }
+        if isinstance(e.msg, (StepStarted, StepCompleted, StepFailed, StepTimeout))
+        and e.msg.step_name == "blocking_step"
     ]
-    assert [e.kind for e in final_step_events] == [
-        HistoryKind.step_started,
-        HistoryKind.step_completed,
+    assert [e.kind for e in blocking_step_kinds] == [
         HistoryKind.step_started,
         HistoryKind.step_timeout,
     ], "A step event appeared after step_timeout — worker was not terminated"

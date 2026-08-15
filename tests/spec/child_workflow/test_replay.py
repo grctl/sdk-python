@@ -121,7 +121,9 @@ def _start_child_future_replay_worker(parent_wf_type: str, child_wf_type: str, p
 # ─── send_to_parent() skip scenario ───────────────────────────────────────────
 
 
-def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause_event=None) -> None:
+def _send_to_parent_replay_worker(
+    parent_wf_type: str, child_wf_type: str, pause_event=None, send_event_gate=None
+) -> None:
     """Worker for send_to_parent() replay test.
 
     Worker A calls send_to_parent() and records parent.event_sent, then pauses.
@@ -141,6 +143,8 @@ def _send_to_parent_replay_worker(parent_wf_type: str, child_wf_type: str, pause
 
         @child_wf.step()
         async def child_send(ctx: Context) -> Directive:
+            if send_event_gate is not None:
+                await asyncio.to_thread(send_event_gate.wait)
             await ctx.send_to_parent("child_done")
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
@@ -399,11 +403,14 @@ async def test_ctx_start_skips_duplicate_child_on_step_retry(grctl_client: Clien
 
 async def test_send_to_parent_skips_duplicate_event_on_step_retry(grctl_client: Client) -> None:
     pause_event = multiprocessing.Event()
+    send_event_gate = multiprocessing.Event()
     parent_wf_type = unique_workflow_type("spec_child_replay_send_parent")
     child_wf_type = unique_workflow_type("spec_child_replay_send_child")
 
     worker_a = multiprocessing.Process(
-        target=_send_to_parent_replay_worker, args=(parent_wf_type, child_wf_type, pause_event), daemon=True
+        target=_send_to_parent_replay_worker,
+        args=(parent_wf_type, child_wf_type, pause_event, send_event_gate),
+        daemon=True,
     )
     worker_b = multiprocessing.Process(
         target=_send_to_parent_replay_worker, args=(parent_wf_type, child_wf_type), daemon=True
@@ -421,6 +428,10 @@ async def test_send_to_parent_skips_duplicate_event_on_step_retry(grctl_client: 
         assert isinstance(child_started, ChildWorkflowStarted)
 
         child_history = HistoryAccess(grctl_client, child_started.wf_id, child_started.run_id, timeout=_HISTORY_TIMEOUT)
+        # Temporary GC-295 workaround: the server can lose an event sent while
+        # the parent is transitioning into Wait. Remove this gate once fixed.
+        await parent_history.wait_for_kind(HistoryKind.wait_started)
+        send_event_gate.set()
         await child_history.wait_for_kind(HistoryKind.parent_event_sent)
         _terminate(worker_a)
         worker_b.start()
