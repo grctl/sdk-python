@@ -1,7 +1,7 @@
 """Retry behaviour of `@task`.
 
 Two levels are covered: `RetryRunner` on its own, which is where the decision to retry
-lives, and a task run through a real journal, which is where those decisions become
+lives, and a task run through a real operation history, which is where those decisions become
 durable history.
 """
 
@@ -219,7 +219,7 @@ def test_backoff_uses_environment_configured_defaults(monkeypatch: pytest.Monkey
         get_settings.cache_clear()
 
 
-# --- The task as a journal operation: what a retried task leaves in history ---
+# --- The task as an operation history operation: what a retried task leaves in history ---
 
 
 async def test_retried_task_records_started_attempts_and_one_terminal_entry(in_step) -> None:

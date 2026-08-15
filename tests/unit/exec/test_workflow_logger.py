@@ -32,7 +32,7 @@ def capture_all_levels(caplog):
 
 
 async def recorded_history(calls: int = 1):
-    """Run `calls` journalled operations against a fresh journal and return what they recorded."""
+    """Run `calls` recorded operations against a fresh operation history and return what they recorded."""
     appender = FakeAppender()
     ctx = make_context(appender=appender)
     for _ in range(calls):
@@ -165,9 +165,9 @@ async def run_step(step_history: list[HistoryEvent], appender: FakeAppender) -> 
     """Run one step through a real Execution, so the logger comes from the production wiring."""
 
     async def handler(ctx: Context) -> Directive:
-        ctx.logger.info("before journalled call")
+        ctx.logger.info("before recorded call")
         await ctx.now()
-        ctx.logger.info("after journalled call")
+        ctx.logger.info("after recorded call")
         return ctx.next.complete("ok")
 
     codec = MsgspecCodec()
@@ -209,12 +209,12 @@ async def test_a_retried_step_only_logs_past_its_recorded_history(caplog) -> Non
     first_attempt = FakeAppender()
     await run_step([], first_attempt)
 
-    assert [r.getMessage() for r in caplog.records] == ["before journalled call", "after journalled call"]
+    assert [r.getMessage() for r in caplog.records] == ["before recorded call", "after recorded call"]
 
     caplog.clear()
     await run_step(first_attempt.events, FakeAppender())
 
-    assert [r.getMessage() for r in caplog.records] == ["after journalled call"]
+    assert [r.getMessage() for r in caplog.records] == ["after recorded call"]
 
 
 async def test_replay_state_is_per_execution(caplog) -> None:

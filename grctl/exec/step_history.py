@@ -14,7 +14,7 @@ class HistoryWriter(Protocol):
 class HistoryCreateInput(NamedTuple):
     """Everything needed to append one history entry — no identity (wf_id/run_id/worker_id).
 
-    Shared by every writer of step history (the journal, step lifecycle events, task
+    Shared by every writer of step history (the operation history, step lifecycle events, task
     events, ...): each supplies kind/payload/operation_id/timestamp, and StepHistory
     is the one place that stamps identity and persists.
     """

@@ -27,7 +27,7 @@ async def call_greeting_api(name: str) -> str:
 @hello.step(start=True)
 async def start(ctx: Context, name: str) -> Directive:
     # ctx.logger inside a step: the step body re-runs when the step is retried with
-    # history, and this line stays silent for as long as the journal is replaying.
+    # history, and this line stays silent for as long as the operation history is replaying.
     ctx.logger.info(f"Initialized workflow for: {name}")
     ctx.store.set("name", name)
     greeting = await call_greeting_api(name)

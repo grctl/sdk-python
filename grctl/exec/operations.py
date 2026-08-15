@@ -8,7 +8,7 @@ from ulid import ULID
 
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
-from grctl.exec.journal import OperationProgress, Outcome, identify
+from grctl.exec.operation_history import OperationProgress, Outcome, identify
 from grctl.models import (
     ChildWorkflowStarted,
     HistoryKind,

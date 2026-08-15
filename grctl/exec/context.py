@@ -6,7 +6,7 @@ from typing import Any, Protocol, TypeVar, overload
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
 from grctl.exec.drc_factory import DrcFactory
-from grctl.exec.journal import Journal
+from grctl.exec.operation_history import OperationHistory
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
 from grctl.exec.workflow_logger import WorkflowLogger
@@ -47,7 +47,7 @@ class Context:
 
     def __init__(  # noqa: PLR0913
         self,
-        journal: Journal,
+        operation_history: OperationHistory,
         run_info: RunInfo,
         worker_id: str,
         step_name: str,
@@ -60,7 +60,7 @@ class Context:
         logger: WorkflowLogger,
         parent_run: RunInfo | None = None,
     ) -> None:
-        self._journal = journal
+        self._operation_history = operation_history
         self._run_info = run_info
         self._worker_id = worker_id
         self._step_name = step_name
@@ -99,7 +99,7 @@ class Context:
         return self._store
 
     async def run(self, fn: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any) -> Any:
-        """Journal a plain async call as a task, without a retry policy."""
+        """Record a plain async call as a task, without a retry policy."""
         return await self.run_task(fn, args, kwargs)
 
     async def run_task(
@@ -109,21 +109,21 @@ class Context:
         kwargs: dict[str, Any],
         retry_policy: RetryPolicy | None = None,
     ) -> Any:
-        """Journal a task call. Args are passed explicitly so no task parameter name is reserved."""
+        """Record a task call. Args are passed explicitly so no task parameter name is reserved."""
         task = Task(fn, args, kwargs, self._codec, self._step_name, retry_policy)
-        return await self._journal.run(task)
+        return await self._operation_history.run(task)
 
     async def now(self) -> datetime:
-        return await self._journal.run(Now())
+        return await self._operation_history.run(Now())
 
     async def random(self) -> float:
-        return await self._journal.run(Random())
+        return await self._operation_history.run(Random())
 
     async def uuid4(self) -> uuid.UUID:
-        return await self._journal.run(Uuid4())
+        return await self._operation_history.run(Uuid4())
 
     async def sleep(self, duration: timedelta) -> None:
-        await self._journal.run(Sleep(duration))
+        await self._operation_history.run(Sleep(duration))
 
     async def send_to_parent(self, event_name: str, payload: Any | None = None) -> None:
         """Emit an event to the parent workflow, if any."""
@@ -135,7 +135,7 @@ class Context:
             event_name,
             payload,
         )
-        await self._journal.run(operation)
+        await self._operation_history.run(operation)
 
     async def start_child(
         self,
@@ -166,7 +166,7 @@ class Context:
             workflow_timeout,
             on_completed_step_name,
         )
-        return await self._journal.run(operation)
+        return await self._operation_history.run(operation)
 
     async def run_child(
         self,

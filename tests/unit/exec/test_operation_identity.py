@@ -13,7 +13,7 @@ import pytest
 from pydantic import BaseModel
 
 from grctl.exec.child_tracker import ChildTracker
-from grctl.exec.journal import NonDeterminismError, identify
+from grctl.exec.operation_history import NonDeterminismError, identify
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.models import RunInfo
 from grctl.nats.codec import MsgspecCodec

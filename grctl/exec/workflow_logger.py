@@ -1,12 +1,12 @@
 """Logging for code written inside a workflow step.
 
 A step is executed more than once. When the worker running it dies, the server
-re-delivers the step and the journal hands back the outcomes already in history
+re-delivers the step and the operation history hands back the outcomes already in history
 instead of performing them again — but the plain Python statements around those
 calls, log statements included, do run again. An operator reading the run back
 would see the same line a second time and conclude the work happened twice.
 
-`WorkflowLogger` follows the journal instead: it stays silent while the step is
+`WorkflowLogger` follows the operation history instead: it stays silent while the step is
 reproducing its recorded prefix and speaks from the moment the step resumes doing
 new work. Only logs written by the workflow author go through it. SDK, worker,
 transport, replay-divergence, and failure diagnostics keep their own module

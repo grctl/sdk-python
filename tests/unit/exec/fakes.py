@@ -2,7 +2,7 @@
 
 The one invariant every operation must satisfy is: replaying recorded history
 reproduces the same value without redoing side effects. `record_then_replay`
-runs a call twice — once against fresh history, once against a journal seeded
+runs a call twice — once against fresh history, once against an operation history seeded
 with what the first call recorded — and asserts that invariant so individual
 tests only need to assert what's specific to the operation under test.
 """
@@ -15,9 +15,9 @@ from typing import Any
 from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.context import Context, Store
 from grctl.exec.drc_factory import DrcFactory
-from grctl.exec.journal import Journal
 from grctl.exec.kv_manager import KVManager
 from grctl.exec.manager import Codec
+from grctl.exec.operation_history import OperationHistory
 from grctl.exec.step_history import HistoryCreateInput
 from grctl.exec.workflow_logger import build_workflow_logger
 from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
@@ -117,12 +117,15 @@ def make_context(  # noqa: PLR0913
     step_infos: dict[str, StepInfo] | None = None,
     store: Store | None = None,
 ) -> Context:
-    """Build a Context wired to fakes, over a fresh journal seeded with `step_history`.
+    """Build a Context wired to fakes, over a fresh operation history seeded with `step_history`.
 
     Pass your own `appender` when you need to assert on what got recorded — Context
-    keeps its journal private, so the appender you hand in is the only handle onto that.
+    keeps its operation history private, so the appender you hand in is the only handle onto that.
     """
-    journal = Journal(step_history=step_history or [], appender=appender if appender is not None else FakeAppender())
+    operation_history = OperationHistory(
+        step_history=step_history or [],
+        appender=appender if appender is not None else FakeAppender(),
+    )
     directive = Directive(
         id="directive-1",
         timestamp=run_info.created_at,
@@ -148,7 +151,7 @@ def make_context(  # noqa: PLR0913
         decoder=context_codec,
     )
     return Context(
-        journal,
+        operation_history,
         run_info,
         worker_id,
         "current_step",
@@ -158,7 +161,7 @@ def make_context(  # noqa: PLR0913
         handle_factory=handle_factory,
         childs=childs if childs is not None else ChildTracker(),
         codec=context_codec,
-        logger=build_workflow_logger(journal, run_info, worker_id, "current_step"),
+        logger=build_workflow_logger(operation_history, run_info, worker_id, "current_step"),
         parent_run=parent_run,
     )
 

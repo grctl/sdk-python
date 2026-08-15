@@ -88,7 +88,7 @@ def _start_step_replay_worker(wf_type: str, pause_event=None) -> None:
 
 
 def _workflow_logging_worker(wf_type: str, log_path: str, pause_event=None) -> None:
-    """Worker that logs through ctx.logger around a journalled task, into its own file.
+    """Worker that logs through ctx.logger around a recorded task, into its own file.
 
     The logging happens in a second step rather than the start step: only a directive the
     server planned after a step result carries the history sequence its step history begins

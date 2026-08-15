@@ -12,7 +12,7 @@ from functools import cache, wraps
 from typing import TYPE_CHECKING, Any, cast, get_type_hints, overload
 
 from grctl.exec.codec import Codec
-from grctl.exec.journal import OperationProgress, Outcome, identify
+from grctl.exec.operation_history import OperationProgress, Outcome, identify
 from grctl.logging_config import get_logger
 from grctl.models import ErrorDetails, HistoryKind, TaskCompleted, TaskFailed
 from grctl.models.directive import RetryPolicy
@@ -73,7 +73,7 @@ def task[**P, T](
     *,
     retry_policy: RetryPolicy | None = None,
 ) -> Callable[P, Awaitable[T]] | Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
-    """Journal a function call through the workflow step currently executing.
+    """Record a function call through the workflow step currently executing.
 
     Written either bare (`@task`) or with a policy (`@task(retry_policy=...)`). Without a
     policy the function is called once; with one it is retried in place, inside this step,
@@ -242,11 +242,11 @@ def _elapsed_ms(started_at: float) -> int:
 
 
 class Task:
-    """Wraps an arbitrary async function as a journal Operation.
+    """Wraps an arbitrary async function as an operation history operation.
 
     Every call to a `@task` function is one of these. It owns the whole task lifecycle:
     the `task.started` entry, one `task.attempt_failed` per retried attempt, and the
-    single terminal entry the journal replays.
+    single terminal entry the operation history replays.
     """
 
     def __init__(  # noqa: PLR0913

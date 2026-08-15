@@ -35,7 +35,7 @@ class PendingOperation(NamedTuple):
 
 
 class StepHistoryAppender(Protocol):
-    """Durable sink this journal records into — defined here, close to its only caller."""
+    """Durable sink this operation history records into — defined here, close to its only caller."""
 
     async def append(self, entry: HistoryCreateInput) -> None: ...
 
@@ -53,23 +53,28 @@ class OperationProgress:
     in replay matching, and never resolve the operation.
     """
 
-    def __init__(self, operation_id: str, step_history: list[HistoryEvent], journal: "Journal") -> None:
+    def __init__(
+        self,
+        operation_id: str,
+        step_history: list[HistoryEvent],
+        operation_history: "OperationHistory",
+    ) -> None:
         self.operation_id = operation_id
         self._step_history = step_history
-        self._journal = journal
+        self._operation_history = operation_history
 
     def count(self, kind: HistoryKind) -> int:
         """Entries of `kind` earlier attempts of this same operation already recorded."""
         return sum(1 for e in self._step_history if e.kind == kind and e.operation_id == self.operation_id)
 
     async def record(self, kind: HistoryKind, payload: HistoryEvents) -> None:
-        await self._journal.record(kind, payload, self.operation_id)
+        await self._operation_history.record(kind, payload, self.operation_id)
 
 
 class Operation(Protocol):
     """A single durable unit of work: a task call, a sleep, ctx.now(), ctx.uuid4(), etc.
 
-    All operation kinds implement this same shape — the journal doesn't know or
+    All operation kinds implement this same shape — the operation history doesn't know or
     care which one it's running.
     """
 
@@ -96,7 +101,7 @@ class Operation(Protocol):
     async def perform(self, progress: OperationProgress, /) -> Outcome:
         """Run the underlying work. Never raises — failure becomes data.
 
-        `progress` is this operation's own slice of the journal. Operations that resolve
+        `progress` is this operation's own slice of the operation history. Operations that resolve
         in one shot ignore it.
         """
         ...
@@ -128,7 +133,7 @@ _REPLAY_KINDS = frozenset(
 )
 
 
-class Journal:
+class OperationHistory:
     def __init__(
         self,
         step_history: list[HistoryEvent],
@@ -147,7 +152,7 @@ class Journal:
     async def run(self, operation: Operation) -> Any:
         """Perform an operation, or replay the outcome history already holds for it.
 
-        The journal owns call position and nothing else about identity: it hands the
+        The operation history owns call position and nothing else about identity: it hands the
         operation its sequence number and the operation says what it is.
         """
         self._seq += 1

@@ -11,8 +11,8 @@ from grctl.exec.child_tracker import ChildTracker
 from grctl.exec.codec import Codec
 from grctl.exec.context import Context
 from grctl.exec.drc_factory import DrcFactory
-from grctl.exec.journal import Journal, StepHistoryAppender
 from grctl.exec.kv_manager import KVManager
+from grctl.exec.operation_history import OperationHistory, StepHistoryAppender
 from grctl.exec.task import reset_current_context, set_current_context
 from grctl.exec.workflow_logger import build_workflow_logger
 from grctl.models import Directive, ErrorDetails, HistoryEvent, RunInfo, Step
@@ -125,9 +125,9 @@ class Execution:
     def _build_context(self) -> tuple[Context, ChildTracker]:
         step_history = self.deps.step_history or []
         childs = ChildTracker()
-        journal = Journal(step_history, self.deps.history_appender)
+        operation_history = OperationHistory(step_history, self.deps.history_appender)
         context = Context(
-            journal,
+            operation_history,
             self.run_info,
             self.worker_info.id,
             self.step_name,
@@ -137,7 +137,7 @@ class Execution:
             self.deps.handle_factory,
             childs,
             self.codec,
-            build_workflow_logger(journal, self.run_info, self.worker_info.id, self.step_name),
+            build_workflow_logger(operation_history, self.run_info, self.worker_info.id, self.step_name),
             self.parent_run,
         )
         return context, childs
