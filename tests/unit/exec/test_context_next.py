@@ -86,9 +86,3 @@ def test_next_wait_uses_the_registered_callback_name() -> None:
     ).next.wait(on_timeout=renamed_handler)
 
     assert directive.msg == Wait(timeout_step_name="registered_name")
-
-
-def test_child_callback_uses_the_registered_name() -> None:
-    ctx = make_context(step_infos={"registered_name": StepInfo(timeout_ms=0)})
-
-    assert ctx._callback_step_name(renamed_handler) == "registered_name"

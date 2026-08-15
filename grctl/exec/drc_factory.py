@@ -42,7 +42,7 @@ class DrcFactory:
 
     def step(self, step_fn: StepHandler) -> Directive:
         """Transition the run to a named workflow step."""
-        step_name = self.step_name(step_fn)
+        step_name = self.resolve_step_handler_name(step_fn)
         return self._next(
             DirectiveKind.step,
             Step(step_name=step_name, timeout_ms=self._step_infos[step_name].timeout_ms),
@@ -50,7 +50,7 @@ class DrcFactory:
 
     def wait(self, timeout: timedelta | None = None, on_timeout: StepHandler | None = None) -> Directive:
         """Park the run until an event arrives or an optional timeout fires."""
-        timeout_step_name = self.step_name(on_timeout) if on_timeout is not None else ""
+        timeout_step_name = self.resolve_step_handler_name(on_timeout) if on_timeout is not None else ""
         return self._next(
             DirectiveKind.wait,
             Wait(
@@ -59,9 +59,9 @@ class DrcFactory:
             ),
         )
 
-    def step_name(self, step_fn: StepHandler) -> str:
+    def resolve_step_handler_name(self, step_handler: StepHandler) -> str:
         """Resolve a handler function to a registered workflow step name."""
-        step_name = getattr(step_fn, "__grctl_step_name__", getattr(step_fn, "__name__", None))
+        step_name = getattr(step_handler, "__grctl_step_name__", getattr(step_handler, "__name__", None))
         if not step_name:
             raise ValueError("Step function must have a __name__ attribute.")
         if step_name not in self._step_infos:

@@ -14,6 +14,7 @@ from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal, StepHistoryAppender
 from grctl.exec.kv_manager import KVManager
 from grctl.exec.task import reset_current_context, set_current_context
+from grctl.exec.workflow_logger import build_workflow_logger
 from grctl.models import Directive, ErrorDetails, HistoryEvent, RunInfo, Step
 from grctl.models.directive import NextMessage
 from grctl.models.handler import HandlerConfig
@@ -136,6 +137,7 @@ class Execution:
             self.deps.handle_factory,
             childs,
             self.codec,
+            build_workflow_logger(journal, self.run_info, self.worker_info.id, self.step_name),
             self.parent_run,
         )
         return context, childs

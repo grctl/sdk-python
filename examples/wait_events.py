@@ -34,7 +34,7 @@ async def call_farewell_api(name: str) -> str:
 @greet_events.step(start=True)
 async def start(ctx: Context, name: str) -> Directive:
     ctx.store.set("name", name)
-    logger.info(f"Initialized workflow for: {name}")
+    ctx.logger.info(f"Initialized workflow for: {name}")
     return ctx.next.wait()
 
 
@@ -61,7 +61,7 @@ async def farewell(ctx: Context, farewell_note: str) -> Directive:
     message = f"{greeting} {res} {farewell_note}"
     ctx.store.set("message", message)
 
-    logger.info(f"Final message: {message}")
+    ctx.logger.info(f"Final message: {message}")
     return ctx.next.complete(message)
 
 

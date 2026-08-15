@@ -19,6 +19,7 @@ from grctl.exec.journal import Journal
 from grctl.exec.kv_manager import KVManager
 from grctl.exec.manager import Codec
 from grctl.exec.step_history import HistoryCreateInput
+from grctl.exec.workflow_logger import build_workflow_logger
 from grctl.models import Directive, DirectiveKind, HistoryEvent, RunInfo, Step
 from grctl.nats.codec import MsgspecCodec
 from grctl.workflow.handle import WorkflowHandleFactory
@@ -157,6 +158,7 @@ def make_context(  # noqa: PLR0913
         handle_factory=handle_factory,
         childs=childs if childs is not None else ChildTracker(),
         codec=context_codec,
+        logger=build_workflow_logger(journal, run_info, worker_id, "current_step"),
         parent_run=parent_run,
     )
 

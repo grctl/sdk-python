@@ -1,7 +1,9 @@
 import asyncio
+import logging
 import multiprocessing
 import os
 from datetime import timedelta
+from pathlib import Path
 
 import ulid
 
@@ -16,6 +18,8 @@ _WORKER_INIT_DELAY = 0.5
 _HISTORY_TIMEOUT = 15.0
 _WORKFLOW_TIMEOUT = timedelta(seconds=120)
 _REPLAY_WORKER_ACK_WAIT_SECONDS = "0.5"
+_BEFORE_TASK_LOG = "before task"
+_AFTER_TASK_LOG = "after task"
 
 _TASK_HISTORY_KINDS = {
     HistoryKind.task_started,
@@ -43,6 +47,13 @@ def _unique_wf_type(prefix: str) -> str:
     return f"{prefix}_{str(ulid.ULID()).lower()}"
 
 
+def _log_lines(path: Path) -> list[str]:
+    """Read back what one worker process printed, tolerating a worker that never logged."""
+    if not path.exists():
+        return []
+    return [line for line in path.read_text().splitlines() if line]
+
+
 # ─── Worker process functions ──────────────────────────────────────────────────
 
 
@@ -68,6 +79,53 @@ def _start_step_replay_worker(wf_type: str, pause_event=None) -> None:
             if pause_event is not None:
                 await asyncio.to_thread(pause_event.wait)
             return ctx.next.complete(result)
+
+        conn = await Connection.connect(servers=[nats_url])
+        wk = Worker(workflows=[wf], connection=conn)
+        await wk.run()
+
+    asyncio.run(run())
+
+
+def _workflow_logging_worker(wf_type: str, log_path: str, pause_event=None) -> None:
+    """Worker that logs through ctx.logger around a journalled task, into its own file.
+
+    The logging happens in a second step rather than the start step: only a directive the
+    server planned after a step result carries the history sequence its step history begins
+    at, so only a second step is actually re-delivered with a replay prefix to consume.
+
+    Each worker process writes to a separate file, so what a replaying worker printed can be
+    compared against what the worker that first ran the step printed.
+    """
+
+    async def run() -> None:
+        _configure_fast_replay_redelivery()
+        nats_url = os.environ.get("SPEC_NATS_URL", "nats://localhost:4225")
+
+        handler = logging.FileHandler(log_path)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        workflow_logs = logging.getLogger("grctl.workflow")
+        workflow_logs.setLevel(logging.INFO)
+        workflow_logs.addHandler(handler)
+
+        wf = Workflow(workflow_type=wf_type)
+
+        @task
+        async def simple_task() -> str:
+            return "done"
+
+        @wf.step()
+        async def logging_step(ctx: Context) -> Directive:
+            ctx.logger.info(_BEFORE_TASK_LOG)
+            result = await simple_task()
+            ctx.logger.info(_AFTER_TASK_LOG)
+            if pause_event is not None:
+                await asyncio.to_thread(pause_event.wait)
+            return ctx.next.complete(result)
+
+        @wf.step(start=True)
+        async def start(ctx: Context) -> Directive:
+            return ctx.next.step(logging_step)
 
         conn = await Connection.connect(servers=[nats_url])
         wk = Worker(workflows=[wf], connection=conn)
@@ -104,6 +162,45 @@ async def test_completed_task_is_skipped_on_start_step_retry(grctl_client) -> No
         task_events = [e for e in history_events if e.kind in _TASK_HISTORY_KINDS]
         started = [e for e in task_events if e.kind == HistoryKind.task_started]
         assert len(started) == 1
+    finally:
+        _terminate(worker_a)
+        _terminate(worker_b)
+
+
+async def test_workflow_logs_are_not_re_emitted_while_replaying(grctl_client, tmp_path) -> None:
+    pause_event = multiprocessing.Event()
+    wf_type = _unique_wf_type("spec_step_replay_logs")
+    log_a = tmp_path / "worker_a.log"
+    log_b = tmp_path / "worker_b.log"
+
+    worker_a = multiprocessing.Process(
+        target=_workflow_logging_worker, args=(wf_type, str(log_a), pause_event), daemon=True
+    )
+    worker_b = multiprocessing.Process(target=_workflow_logging_worker, args=(wf_type, str(log_b)), daemon=True)
+    worker_a.start()
+    await asyncio.sleep(_WORKER_INIT_DELAY)
+
+    wf_id = str(ulid.ULID())
+    handle = await grctl_client.start_workflow(type=wf_type, id=wf_id, input={}, timeout=_WORKFLOW_TIMEOUT)
+
+    try:
+        history = HistoryAccess(grctl_client, wf_id, handle.run_info.id, timeout=_HISTORY_TIMEOUT)
+        await history.wait_for_kind(HistoryKind.task_completed)
+        _terminate(worker_a)
+        worker_b.start()
+
+        assert await asyncio.wait_for(handle.future, timeout=60.0) == "done"
+
+        # Silence alone would also be produced by a worker that never picked the step up:
+        # the single task.started is what says the retry replayed rather than re-ran.
+        final_events = await history.direct_events()
+        assert len([e for e in final_events if e.kind == HistoryKind.task_started]) == 1
+
+        # The first attempt is fresh work and logs both lines.
+        assert _log_lines(log_a) == [_BEFORE_TASK_LOG, _AFTER_TASK_LOG]
+        # The retry replays the task from history: the line before it is suppressed, and the
+        # line after it is emitted because the replay prefix is exhausted by then.
+        assert _log_lines(log_b) == [_AFTER_TASK_LOG]
     finally:
         _terminate(worker_a)
         _terminate(worker_b)

@@ -26,7 +26,7 @@ async def tick(iteration: int) -> int:
 
 @ticker.step(start=True)
 async def start(ctx: Context, iterations: int) -> Directive:
-    logger.info(f"Starting tick step with {iterations} iterations")
+    ctx.logger.info(f"Starting tick step with {iterations} iterations")
 
     ctx.store.set("iterations", iterations)
     return ctx.next.step(tick_step)
@@ -38,7 +38,7 @@ async def tick_step(ctx: Context) -> Directive:
 
     for i in range(iterations):
         await tick(i)
-        logger.info(f"Tick iteration: {i}")
+        ctx.logger.info(f"Tick iteration: {i}")
 
     return ctx.next.complete(iterations)
 

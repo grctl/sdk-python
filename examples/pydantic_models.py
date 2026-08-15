@@ -77,7 +77,7 @@ async def enrich_order(order: OrderRequest) -> EnrichedOrder:
 @orders.step(start=True)
 async def start(ctx: Context, order: OrderRequest) -> Directive:
     enriched = await enrich_order(order)
-    logger.info(f"Enriched order: total={enriched.total} {enriched.currency}")
+    ctx.logger.info(f"Enriched order: total={enriched.total} {enriched.currency}")
     ctx.store.set("enriched_order", enriched)
     return ctx.next.wait()
 
@@ -85,7 +85,7 @@ async def start(ctx: Context, order: OrderRequest) -> Directive:
 @orders.step(event=True)
 async def confirm_payment(ctx: Context, confirmation: PaymentConfirmation) -> Directive:
     enriched = await ctx.store.get("enriched_order", EnrichedOrder)
-    logger.info(f"Payment {confirmation.status} for order {enriched.order_id}: {confirmation.paid_amount}")
+    ctx.logger.info(f"Payment {confirmation.status} for order {enriched.order_id}: {confirmation.paid_amount}")
 
     result = OrderResult(
         order_id=enriched.order_id,

@@ -9,6 +9,7 @@ from grctl.exec.drc_factory import DrcFactory
 from grctl.exec.journal import Journal
 from grctl.exec.operations import Now, Random, SendToParent, Sleep, StartChild, Uuid4
 from grctl.exec.task import Task
+from grctl.exec.workflow_logger import WorkflowLogger
 from grctl.models import Directive, ErrorDetails, RunInfo
 from grctl.models.directive import RetryPolicy
 from grctl.workflow.handle import WorkflowAPI, WorkflowHandle, WorkflowHandleFactory
@@ -56,6 +57,7 @@ class Context:
         handle_factory: WorkflowHandleFactory,
         childs: ChildTracker,
         codec: Codec,
+        logger: WorkflowLogger,
         parent_run: RunInfo | None = None,
     ) -> None:
         self._journal = journal
@@ -68,6 +70,7 @@ class Context:
         self._handle_factory = handle_factory
         self._childs = childs
         self._codec = codec
+        self._logger = logger
         self._parent_run = parent_run
 
     @property
@@ -79,6 +82,16 @@ class Context:
     def next(self) -> Next:
         """Build the workflow transition returned by this step."""
         return self._drc_factory
+
+    @property
+    def logger(self) -> WorkflowLogger:
+        """Log from inside a step without repeating the lines a replay already emitted.
+
+        A step body runs again whenever its worker died mid-step, so a module logger used
+        here prints the same line once per attempt. This one stays quiet until the step is
+        past its recorded history and is doing new work.
+        """
+        return self._logger
 
     @property
     def store(self) -> Store:
@@ -139,6 +152,9 @@ class Context:
         (on success) or the error (on failure/cancellation). The parent typically parks
         with ctx.next.wait() so the callback can wake it.
         """
+        on_completed_step_name = (
+            self._drc_factory.resolve_step_handler_name(on_completed_step) if on_completed_step else None
+        )
         operation = StartChild(
             self._run_info,
             self._codec,
@@ -148,7 +164,7 @@ class Context:
             workflow_id,
             workflow_input,
             workflow_timeout,
-            self._callback_step_name(on_completed_step),
+            on_completed_step_name,
         )
         return await self._journal.run(operation)
 
@@ -168,8 +184,3 @@ class Context:
         """
         handle = await self.start_child(workflow_type, workflow_id, workflow_input, workflow_timeout)
         return await handle.result(timeout=timeout)
-
-    def _callback_step_name(self, on_completed_step: StepHandler | None) -> str | None:
-        if on_completed_step is None:
-            return None
-        return self._drc_factory.step_name(on_completed_step)

@@ -18,13 +18,17 @@ hello = Workflow(workflow_type="Hello")
 
 @task
 async def call_greeting_api(name: str) -> str:
+    # A module logger is right here: a completed task is replayed from history, so this
+    # body is skipped entirely rather than re-run.
     logger.info(f"Calling external Greeting API for name: {name}")
     return f"Hello, {name}!"
 
 
 @hello.step(start=True)
 async def start(ctx: Context, name: str) -> Directive:
-    logger.info(f"Initialized workflow for: {name}")
+    # ctx.logger inside a step: the step body re-runs when the step is retried with
+    # history, and this line stays silent for as long as the journal is replaying.
+    ctx.logger.info(f"Initialized workflow for: {name}")
     ctx.store.set("name", name)
     greeting = await call_greeting_api(name)
     message = f"{greeting}"
