@@ -18,6 +18,10 @@ class WorkflowStepAlreadyExecutedError(Exception):
     """Raised when a directive names a run_id that already has an execution in flight."""
 
 
+class HistoryReadError(WorkflowError):
+    """Raised when durable workflow history cannot be read completely."""
+
+
 ERR_WORKFLOW_ALREADY_RUNNING = 4001
 ERR_WORKFLOW_RUN_NOT_FOUND = 4002
 ERR_WORKFLOW_TYPE_NOT_REGISTERED = 4004

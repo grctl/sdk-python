@@ -37,6 +37,7 @@ from grctl.models.directive import (
     directive_decoder,
     directive_encoder,
 )
+from grctl.models.errors import HistoryReadError
 from grctl.models.history import (
     ChildWorkflowStarted,
     DeterministicEvents,
@@ -152,4 +153,5 @@ __all__ = [  # noqa: RUF022
     "RunStatus",
     "ErrorDetails",
     "RunInfoManager",
+    "HistoryReadError",
 ]

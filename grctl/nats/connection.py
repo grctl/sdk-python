@@ -48,7 +48,7 @@ class Connection:
         self._jetstream = jetstream
         self._codec = MsgspecCodec(serializers)
 
-        self._history = NatsHistoryAPI(self._nc, self._codec)
+        self._history = NatsHistoryAPI(self._jetstream, self._codec)
         self._listener_factory = NatsHistoryListenerFactory(self._nc)
         self._workflow_api = NatsWorkflowAPI(self._nc, self._codec)
         self._worker_api = NatsWorkerAPI(self._nc, self._codec)
